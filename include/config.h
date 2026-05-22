@@ -16,9 +16,17 @@
 #define API_CREDENTIALS_PATH    "/api/v1/device/credentials/"
 
 /* Hardware */
-#define BELL_GPIO_PIN           GPIO_NUM_25
+#define BELL_GPIO_PIN           GPIO_NUM_13
 #define BELL_DEFAULT_DURATION_MS 3000
 #define BELL_MAX_DURATION_MS    30000
+
+/* RTC (DS1307/DS3231) I2C pins */
+#define RTC_I2C_SDA_PIN         GPIO_NUM_22
+#define RTC_I2C_SCL_PIN         GPIO_NUM_21
+#define RTC_RST_PIN             GPIO_NUM_4
+#define RTC_I2C_PORT            I2C_NUM_0
+#define RTC_I2C_FREQ_HZ         100000
+#define RTC_I2C_ADDR            0x68
 
 /* Timings */
 #define HEARTBEAT_INTERVAL_MS   30000

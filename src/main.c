@@ -6,6 +6,7 @@
 #include "schedule_manager.h"
 #include "device_registration.h"
 #include "status_reporter.h"
+#include "rtc_driver.h"
 
 #include "esp_log.h"
 #include "esp_sntp.h"
@@ -60,8 +61,9 @@ static void init_sntp(void)
 
     if (sntp_sync_once()) {
         ESP_LOGI(TAG, "SNTP time synced");
+        rtc_driver_save_from_system(); /* Save to RTC hardware */
     } else {
-        ESP_LOGW(TAG, "SNTP sync timeout, schedule may be inaccurate");
+        ESP_LOGW(TAG, "SNTP sync timeout, using RTC time");
     }
 }
 
@@ -77,6 +79,7 @@ static void sntp_periodic_resync(uint32_t *last_sync_tick)
 
     if (sntp_sync_once()) {
         ESP_LOGI(TAG, "SNTP re-sync OK");
+        rtc_driver_save_from_system();
         *last_sync_tick = now_tick;
     } else {
         ESP_LOGW(TAG, "SNTP re-sync failed, retry in %d ms", SNTP_RETRY_INTERVAL_MS);
@@ -116,7 +119,10 @@ void app_main(void)
     /* Register shutdown handler to turn off bell on panic/restart */
     esp_register_shutdown_handler(shutdown_handler);
 
-    /* 2. Apply timezone from NVS (or default) */
+    /* 2. Initialize RTC (DS1307) — set system time from hardware clock */
+    rtc_driver_init();
+
+    /* 3. Apply timezone from NVS (or default) */
     apply_timezone();
 
     /* 3. Initialize bell GPIO */
