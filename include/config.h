@@ -1,13 +1,13 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 /* WiFi defaults (used if NVS is empty) */
-#define DEFAULT_WIFI_SSID       "SchoolDevice"
-#define DEFAULT_WIFI_PASS       "changeme123"
+#define DEFAULT_WIFI_SSID       "12"
+#define DEFAULT_WIFI_PASS       "12345678"
 /* MQTT */
-#define MQTT_BROKER_URI         "mqtts://mqtt.example.com:8883"
+#define MQTT_BROKER_URI         "mqtt://146.190.210.125:1883"
 #define MQTT_KEEPALIVE_SEC      30
 /* API */
-#define API_BASE_URL            "https://api.example.com"
+#define API_BASE_URL            "http://bell.boos.uz"
 #define API_REGISTER_PATH       "/api/v1/device/auto-register/"
 #define API_ACTIVATE_PATH       "/api/v1/device/activate/"
 #define API_CREDENTIALS_PATH    "/api/v1/device/credentials/"
@@ -43,8 +43,8 @@
 #define NVS_NAMESPACE_CONFIG    "config"
 #define NVS_NAMESPACE_HOLIDAYS  "holidays"
 /* OTA */
-#define OTA_ALLOWED_HOST        "api.example.com"
-#define OTA_ALLOWED_HOST_2      "firmware.example.com"
+#define OTA_ALLOWED_HOST        "bell.boos.uz"
+#define OTA_ALLOWED_HOST_2      "146.190.210.125"
 /* Firmware version */
 #define FW_VERSION              "1.0.0"
 /* BLE Provisioning */
