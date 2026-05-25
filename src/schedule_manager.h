@@ -36,4 +36,20 @@ void schedule_manager_tick(void);
  */
 void schedule_manager_sync_time(void);
 
+/**
+ * Get current schedule version number.
+ */
+uint32_t schedule_manager_get_version(void);
+
+/**
+ * Check if schedule should sync based on server version.
+ * Returns true if server_version > local version.
+ */
+bool schedule_manager_should_sync(uint32_t server_version);
+
+/**
+ * Check if schedule is stale (older than 7 days without sync).
+ */
+bool schedule_manager_is_stale(void);
+
 #endif

@@ -1,51 +1,64 @@
+/* Copy this file to config.h and fill in your values */
 #ifndef CONFIG_H
 #define CONFIG_H
-/* WiFi defaults (used if NVS is empty) */
-#define DEFAULT_WIFI_SSID       "SchoolDevice"
-#define DEFAULT_WIFI_PASS       "changeme123"
-/* MQTT */
-#define MQTT_BROKER_URI         "mqtts://mqtt.example.com:8883"
+
+/* WiFi — BLE/AP provisioning orqali sozlanadi, yoki shu yerga yozing */
+#define DEFAULT_WIFI_SSID       "YOUR_WIFI_SSID"
+#define DEFAULT_WIFI_PASS       "YOUR_WIFI_PASSWORD"
+
+/* MQTT Broker */
+#define MQTT_BROKER_URI         "mqtt://YOUR_SERVER_IP:1883"
 #define MQTT_KEEPALIVE_SEC      30
-/* API */
-#define API_BASE_URL            "https://api.example.com"
+
+/* API Server */
+#define API_BASE_URL            "http://YOUR_SERVER_IP:8000"
 #define API_REGISTER_PATH       "/api/v1/device/auto-register/"
 #define API_ACTIVATE_PATH       "/api/v1/device/activate/"
 #define API_CREDENTIALS_PATH    "/api/v1/device/credentials/"
-/* Hardware */
+
+/* Hardware Pins */
 #define BELL_GPIO_PIN           GPIO_NUM_13
 #define BELL_DEFAULT_DURATION_MS 3000
+#define BELL_MAX_DURATION_MS    30000
 #define PANIC_BUTTON_GPIO       GPIO_NUM_0
 #define RELAY2_GPIO_PIN         GPIO_NUM_14
-#define BELL_MAX_DURATION_MS    30000
-/* RTC (DS1307/DS3231) I2C pins */
+
+/* RTC (DS1307/DS3231) I2C */
 #define RTC_I2C_SDA_PIN         GPIO_NUM_22
 #define RTC_I2C_SCL_PIN         GPIO_NUM_21
 #define RTC_RST_PIN             GPIO_NUM_4
 #define RTC_I2C_PORT            I2C_NUM_0
 #define RTC_I2C_FREQ_HZ         100000
 #define RTC_I2C_ADDR            0x68
+
 /* Timings */
 #define HEARTBEAT_INTERVAL_MS   30000
 #define WIFI_RECONNECT_DELAY_MS 5000
 #define MQTT_RECONNECT_DELAY_MS 5000
-#define SNTP_RESYNC_INTERVAL_MS (3600 * 1000)  /* 1 hour */
-#define SNTP_RETRY_INTERVAL_MS  (60 * 1000)    /* 1 minute on failure */
-/* WiFi exponential backoff */
+#define SNTP_RESYNC_INTERVAL_MS (3600 * 1000)
+#define SNTP_RETRY_INTERVAL_MS  (60 * 1000)
 #define WIFI_BACKOFF_INITIAL_MS 5000
 #define WIFI_BACKOFF_MAX_MS     60000
-/* Default timezone (Asia/Tashkent = UTC+5) */
+
+/* Timezone */
 #define DEFAULT_TZ_STRING       "UTC-5"
-/* NVS namespaces */
+
+/* NVS Namespaces */
 #define NVS_NAMESPACE_WIFI      "wifi"
 #define NVS_NAMESPACE_MQTT      "mqtt_creds"
 #define NVS_NAMESPACE_DEVICE    "device"
 #define NVS_NAMESPACE_SCHEDULE  "schedule"
 #define NVS_NAMESPACE_CONFIG    "config"
 #define NVS_NAMESPACE_HOLIDAYS  "holidays"
-/* OTA */
-#define OTA_ALLOWED_HOST        "api.example.com"
-#define OTA_ALLOWED_HOST_2      "firmware.example.com"
-/* Firmware version */
+
+/* OTA Allowed Hosts */
+#define OTA_ALLOWED_HOST        "YOUR_SERVER_DOMAIN"
+#define OTA_ALLOWED_HOST_2      "YOUR_SERVER_IP"
+
+/* Firmware Version */
 #define FW_VERSION              "1.0.0"
+
 /* BLE Provisioning */
-#endif /* CONFIG_H */
+#define BLE_PASSKEY             123456
+
+#endif

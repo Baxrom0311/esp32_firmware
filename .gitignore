@@ -1,9 +1,4 @@
 .pio/
 .vscode/
 sdkconfig.old
-*.o
-*.a
-*.bin
-*.elf
-*.map
 build/

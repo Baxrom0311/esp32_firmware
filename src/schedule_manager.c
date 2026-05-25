@@ -1,5 +1,7 @@
 #include "schedule_manager.h"
 #include "bell_controller.h"
+#include "holiday_manager.h"
+#include "wifi_manager.h"
 #include "nvs_storage.h"
 #include "config.h"
 #include "esp_log.h"
@@ -14,8 +16,12 @@
 
 static const char *TAG = "schedule";
 
+#define SCHEDULE_STALE_SEC (7 * 24 * 3600)  /* 7 days */
+
 static schedule_entry_t s_entries[MAX_SCHEDULE_ENTRIES];
 static int s_entry_count = 0;
+static uint32_t s_schedule_version = 0;
+static time_t s_last_sync_time = 0;  /* epoch when schedule was last updated */
 
 static uint32_t compute_crc(const void *data, size_t len)
 {
@@ -48,7 +54,14 @@ esp_err_t schedule_manager_init(void)
             s_entry_count = 0;
             return ESP_OK;
         }
-        ESP_LOGI(TAG, "Loaded %d schedule entries from NVS (CRC OK)", s_entry_count);
+        /* Load schedule version */
+        size_t ver_len = sizeof(s_schedule_version);
+        nvs_storage_get_blob(NVS_NAMESPACE_SCHEDULE, "ver", &s_schedule_version, &ver_len);
+        /* Load last sync timestamp */
+        size_t ts_len = sizeof(s_last_sync_time);
+        nvs_storage_get_blob(NVS_NAMESPACE_SCHEDULE, "sync_ts", &s_last_sync_time, &ts_len);
+        ESP_LOGI(TAG, "Loaded %d schedule entries from NVS (CRC OK), version=%lu",
+                 s_entry_count, (unsigned long)s_schedule_version);
     } else if (err == ESP_ERR_NVS_NOT_FOUND) {
         s_entry_count = 0;
         ESP_LOGW(TAG, "No schedule in NVS, waiting for MQTT sync");
@@ -63,10 +76,28 @@ esp_err_t schedule_manager_init(void)
 
 esp_err_t schedule_manager_update(const char *json_payload)
 {
+    /* Online-only guard: reject updates when WiFi is not connected */
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "Schedule update rejected: offline");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     cJSON *root = cJSON_Parse(json_payload);
     if (!root) {
         ESP_LOGE(TAG, "Failed to parse schedule JSON");
         return ESP_ERR_INVALID_ARG;
+    }
+
+    /* Version check: skip if not newer */
+    cJSON *ver = cJSON_GetObjectItem(root, "version");
+    if (ver && cJSON_IsNumber(ver)) {
+        uint32_t new_ver = (uint32_t)ver->valueint;
+        if (new_ver <= s_schedule_version) {
+            ESP_LOGI(TAG, "Schedule already up-to-date (v%lu >= v%lu)",
+                     (unsigned long)s_schedule_version, (unsigned long)new_ver);
+            cJSON_Delete(root);
+            return ESP_OK;
+        }
     }
 
     cJSON *entries = cJSON_GetObjectItem(root, "entries");
@@ -99,14 +130,22 @@ esp_err_t schedule_manager_update(const char *json_payload)
         count++;
     }
     s_entry_count = count;
+    if (ver && cJSON_IsNumber(ver)) {
+        s_schedule_version = (uint32_t)ver->valueint;
+    } else {
+        s_schedule_version++;
+    }
     cJSON_Delete(root);
 
-    /* Save blob + CRC32 */
+    /* Save blob + CRC32 + sync timestamp */
     size_t blob_len = count * sizeof(schedule_entry_t);
     esp_err_t err = nvs_storage_set_blob(NVS_NAMESPACE_SCHEDULE, "data", s_entries, blob_len);
     if (err == ESP_OK) {
         uint32_t crc = compute_crc(s_entries, blob_len);
         nvs_storage_set_blob(NVS_NAMESPACE_SCHEDULE, "crc", &crc, sizeof(crc));
+        nvs_storage_set_blob(NVS_NAMESPACE_SCHEDULE, "ver", &s_schedule_version, sizeof(s_schedule_version));
+        s_last_sync_time = time(NULL);
+        nvs_storage_set_blob(NVS_NAMESPACE_SCHEDULE, "sync_ts", &s_last_sync_time, sizeof(s_last_sync_time));
     }
 
     ESP_LOGI(TAG, "Schedule updated: %d entries, NVS save: %s", count, esp_err_to_name(err));
@@ -128,16 +167,27 @@ void schedule_manager_tick(void)
 
     localtime_r(&now, &timeinfo);
 
+    /* Skip all bells if today is a holiday or silent mode is active */
+    if (holiday_manager_is_silent() || holiday_manager_is_today_holiday()) {
+        static uint8_t s_skip_logged_day = 0xFF;
+        if (s_skip_logged_day != timeinfo.tm_mday) {
+            ESP_LOGI(TAG, "Today is holiday, skipping bells");
+            s_skip_logged_day = timeinfo.tm_mday;
+        }
+        return;
+    }
+
     uint8_t cur_hour = timeinfo.tm_hour;
     uint8_t cur_min = timeinfo.tm_min;
     uint8_t cur_wday = (timeinfo.tm_wday + 6) % 7; /* Convert Sun=0 to Mon=0 */
 
-    /* Use combined hour:minute to prevent re-triggering within same minute
-     * but allow same minute in different hours (e.g., 08:30 and 09:30) */
+    /* Use combined day+hour:minute to prevent re-triggering within same minute
+     * but allow same time on different days */
     static uint16_t s_last_triggered_hhmm = 0xFFFF;
+    static uint8_t s_last_triggered_day = 0xFF;
     uint16_t cur_hhmm = (uint16_t)cur_hour * 60 + cur_min;
 
-    if (cur_hhmm == s_last_triggered_hhmm) return;
+    if (cur_hhmm == s_last_triggered_hhmm && timeinfo.tm_mday == s_last_triggered_day) return;
 
     bool triggered = false;
     for (int i = 0; i < s_entry_count; i++) {
@@ -153,6 +203,7 @@ void schedule_manager_tick(void)
 
     if (triggered) {
         s_last_triggered_hhmm = cur_hhmm;
+        s_last_triggered_day = timeinfo.tm_mday;
     }
 }
 
@@ -160,4 +211,22 @@ void schedule_manager_sync_time(void)
 {
     ESP_LOGI(TAG, "Forcing NTP time sync");
     esp_sntp_restart();
+}
+
+uint32_t schedule_manager_get_version(void)
+{
+    return s_schedule_version;
+}
+
+bool schedule_manager_is_stale(void)
+{
+    if (s_last_sync_time == 0 || s_entry_count == 0) return false;
+    time_t now = time(NULL);
+    if (now < 1700000000) return false; /* SNTP not synced */
+    return (now - s_last_sync_time) > SCHEDULE_STALE_SEC;
+}
+
+bool schedule_manager_should_sync(uint32_t server_version)
+{
+    return server_version > s_schedule_version;
 }
