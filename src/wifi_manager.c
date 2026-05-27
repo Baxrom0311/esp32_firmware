@@ -20,8 +20,8 @@ static const char *TAG = "wifi_mgr";
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
-#define AP_FALLBACK_RETRIES 5
-#define MAX_RETRY 10
+#define AP_FALLBACK_RETRIES 3
+#define MAX_RETRY 3
 
 static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
@@ -67,6 +67,7 @@ static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *da
             /* Trigger AP fallback after AP_FALLBACK_RETRIES failed attempts */
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
             ESP_LOGW(TAG, "WiFi failed %d times, triggering AP fallback", s_retry_num);
+            s_fallback_mode = false; /* prevent re-trigger */
             if (s_fallback_cb) {
                 s_fallback_cb();
             }

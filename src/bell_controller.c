@@ -1,5 +1,6 @@
 #include "bell_controller.h"
 #include "config.h"
+#include <time.h>
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "hal/gpio_ll.h"
@@ -20,7 +21,7 @@ esp_err_t bell_controller_init(void)
         .intr_type = GPIO_INTR_DISABLE,
     };
     esp_err_t err = gpio_config(&io_conf);
-    gpio_set_level(BELL_GPIO_PIN, 0);
+    gpio_set_level(BELL_GPIO_PIN, 1); /* active-low relay OFF */
     s_ring_mutex = xSemaphoreCreateBinary();
     xSemaphoreGive(s_ring_mutex);
     ESP_LOGI(TAG, "Bell GPIO %d initialized", BELL_GPIO_PIN);
@@ -30,11 +31,27 @@ esp_err_t bell_controller_init(void)
 static void ring_task(void *arg)
 {
     uint32_t duration_ms = (uint32_t)(uintptr_t)arg;
-    gpio_set_level(BELL_GPIO_PIN, 1);
+    gpio_set_level(BELL_GPIO_PIN, 0); /* active-low relay ON */
     ESP_LOGI(TAG, "Bell ON for %lu ms", (unsigned long)duration_ms);
     vTaskDelay(pdMS_TO_TICKS(duration_ms));
-    gpio_set_level(BELL_GPIO_PIN, 0);
+    gpio_set_level(BELL_GPIO_PIN, 1); /* active-low relay OFF */
     ESP_LOGI(TAG, "Bell OFF");
+
+    /* Publish bell_log to MQTT */
+    extern const char *device_registration_get_id(void);
+    const char *dev_id = device_registration_get_id();
+    if (dev_id && dev_id[0]) {
+        char topic[96], payload[128];
+        time_t now; time(&now);
+        struct tm t; localtime_r(&now, &t);
+        snprintf(topic, sizeof(topic), "devices/%s/bell_log", dev_id);
+        snprintf(payload, sizeof(payload),
+            "{\"time\":\"%02d:%02d:%02d\",\"duration\":%lu,\"source\":\"command\"}",
+            t.tm_hour, t.tm_min, t.tm_sec, (unsigned long)duration_ms);
+        extern esp_err_t mqtt_client_publish(const char*, const char*, int);
+        mqtt_client_publish(topic, payload, 1);
+    }
+
     xSemaphoreGive(s_ring_mutex);
     vTaskDelete(NULL);
 }
@@ -65,5 +82,5 @@ esp_err_t bell_controller_ring(uint32_t duration_ms)
 void bell_controller_panic_off(void)
 {
     /* Direct register write — safe to call from panic context (no RTOS) */
-    gpio_ll_set_level(&GPIO, BELL_GPIO_PIN, 0);
+    gpio_ll_set_level(&GPIO, BELL_GPIO_PIN, 1);
 }

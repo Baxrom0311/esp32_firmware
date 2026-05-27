@@ -7,6 +7,7 @@
 #include "esp_system.h"
 #include "mqtt_client.h" /* ESP-IDF MQTT client */
 #include "bell_controller.h"
+#include "holiday_manager.h"
 #include "ota_manager.h"
 #include "schedule_manager.h"
 #include "cJSON.h"
@@ -34,6 +35,7 @@ static char s_topic_command[96];
 static char s_topic_schedule[96];
 static char s_topic_config[96];
 static char s_topic_status[96];
+static char s_topic_holidays[96];
 
 static void build_topics(const char *device_id)
 {
@@ -41,6 +43,7 @@ static void build_topics(const char *device_id)
     snprintf(s_topic_schedule, sizeof(s_topic_schedule), "devices/%s/schedule", device_id);
     snprintf(s_topic_config, sizeof(s_topic_config), "devices/%s/config", device_id);
     snprintf(s_topic_status, sizeof(s_topic_status), "devices/%s/status", device_id);
+    snprintf(s_topic_holidays, sizeof(s_topic_holidays), "devices/%s/holidays", device_id);
 }
 
 static void subscribe_topics(void)
@@ -48,6 +51,7 @@ static void subscribe_topics(void)
     esp_mqtt_client_subscribe(s_client, s_topic_command, 1);
     esp_mqtt_client_subscribe(s_client, s_topic_schedule, 1);
     esp_mqtt_client_subscribe(s_client, s_topic_config, 1);
+    esp_mqtt_client_subscribe(s_client, s_topic_holidays, 1);
     ESP_LOGI(TAG, "Subscribed to device topics");
 }
 
@@ -86,9 +90,21 @@ static void mqtt_dispatch_command(const char *json_data)
         ESP_LOGI(TAG, "Reboot command received");
         vTaskDelay(pdMS_TO_TICKS(500));
         esp_restart();
+    } else if (strcmp(command, "silent") == 0) {
+        cJSON *state = cJSON_GetObjectItem(root, "state");
+        bool on = cJSON_IsTrue(state);
+        holiday_manager_set_silent(on);
+        ESP_LOGI(TAG, "Silent mode: %s", on ? "ON" : "OFF");
     } else if (strcmp(command, "ntp_sync") == 0) {
         ESP_LOGI(TAG, "NTP sync command received");
         schedule_manager_sync_time();
+    } else if (strcmp(command, "fire_alarm") == 0) {
+        ESP_LOGW(TAG, "FIRE ALARM! Repeating pattern");
+        /* 3s on, 2s off, repeat 6 times = 30s total */
+        for (int i = 0; i < 6; i++) {
+            bell_controller_ring(3000);
+            vTaskDelay(pdMS_TO_TICKS(5000)); /* 3s ring + 2s pause */
+        }
     }
 
     cJSON_Delete(root);
@@ -166,6 +182,8 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
                 mqtt_dispatch_command(s_frag_buf);
             } else if (strcmp(s_frag_topic, s_topic_config) == 0) {
                 mqtt_dispatch_config(s_frag_buf);
+            } else if (strcmp(s_frag_topic, s_topic_holidays) == 0) {
+                holiday_manager_update_full(s_frag_buf);
             }
             free(s_frag_buf);
             s_frag_buf = NULL;
@@ -202,7 +220,7 @@ esp_err_t mqtt_client_init(const char *device_id, const char *username, const ch
 
     esp_mqtt_client_config_t cfg = {
         .broker.address.uri = MQTT_BROKER_URI,
-        .broker.verification.certificate = ca_cert_pem,
+        /* .broker.verification.certificate = ca_cert_pem, */ /* disabled: using mqtt:// not mqtts:// */
         .credentials = {
             .username = username,
             .client_id = client_id,

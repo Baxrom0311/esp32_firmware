@@ -165,6 +165,7 @@ void schedule_manager_tick(void)
         return;
     }
 
+
     localtime_r(&now, &timeinfo);
 
     /* Skip all bells if today is a holiday or silent mode is active */
@@ -180,6 +181,13 @@ void schedule_manager_tick(void)
     uint8_t cur_hour = timeinfo.tm_hour;
     uint8_t cur_min = timeinfo.tm_min;
     uint8_t cur_wday = (timeinfo.tm_wday + 6) % 7; /* Convert Sun=0 to Mon=0 */
+
+    /* Debug: print time every 30s */
+    static time_t last_debug = 0;
+    if (now - last_debug >= 30) {
+        ESP_LOGI(TAG, "tick: %02d:%02d (wday=%d, entries=%d)", cur_hour, cur_min, cur_wday, s_entry_count);
+        last_debug = now;
+    }
 
     /* Use combined day+hour:minute to prevent re-triggering within same minute
      * but allow same time on different days */

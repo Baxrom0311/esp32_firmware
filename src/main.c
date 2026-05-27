@@ -1,4 +1,5 @@
 #include "config.h"
+#include "ap_provisioning.h"
 #include "nvs_storage.h"
 #include "wifi_manager.h"
 #include "app_mqtt.h"
@@ -41,14 +42,23 @@ static void apply_timezone(void)
     ESP_LOGI(TAG, "Timezone set to: %s", tz);
 }
 
+static volatile bool s_sntp_synced = false;
+
+static void sntp_sync_cb(struct timeval *tv)
+{
+    s_sntp_synced = true;
+    ESP_LOGI(TAG, "SNTP callback: time synced");
+}
+
 static bool sntp_sync_once(void)
 {
+    s_sntp_synced = false;
     int retry = 0;
-    while (time(NULL) < 1600000000 && retry < 20) {
+    while (!s_sntp_synced && retry < 40) { /* max 20s */
         vTaskDelay(pdMS_TO_TICKS(500));
         retry++;
     }
-    return time(NULL) >= 1600000000;
+    return s_sntp_synced;
 }
 
 static void init_sntp(void)
@@ -56,6 +66,7 @@ static void init_sntp(void)
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_setservername(1, "time.google.com");
+    esp_sntp_set_time_sync_notification_cb(sntp_sync_cb);
     esp_sntp_init();
     ESP_LOGI(TAG, "SNTP initialized, waiting for sync...");
 
@@ -100,6 +111,13 @@ static void mark_ota_valid_after_boot(void)
     }
 }
 
+static void wifi_fallback_handler(void)
+{
+    ESP_LOGW(TAG, "WiFi failed — starting AP+STA provisioning mode");
+    wifi_manager_start_apsta();
+    ap_provisioning_start_portal_only();
+}
+
 void app_main(void)
 {
     ESP_LOGI(TAG, "School Device Firmware v%s starting...", FW_VERSION);
@@ -120,16 +138,16 @@ void app_main(void)
     esp_register_shutdown_handler(shutdown_handler);
 
     /* 2. Initialize RTC (DS1307) — set system time from hardware clock */
-    rtc_driver_init();
+    apply_timezone();
 
     /* 3. Apply timezone from NVS (or default) */
-    apply_timezone();
+    rtc_driver_init();
 
     /* 3. Initialize bell GPIO */
     ESP_ERROR_CHECK(bell_controller_init());
 
     /* 4. Connect to WiFi */
-    esp_err_t wifi_err = wifi_manager_init();
+    esp_err_t wifi_err = wifi_manager_init_with_fallback(wifi_fallback_handler);
     if (wifi_err != ESP_OK) {
         ESP_LOGW(TAG, "WiFi failed, running offline with cached schedule");
     }
