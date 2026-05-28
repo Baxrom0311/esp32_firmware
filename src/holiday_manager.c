@@ -1,4 +1,5 @@
 #include "holiday_manager.h"
+#include "app_mqtt.h"
 #include "wifi_manager.h"
 #include "config.h"
 
@@ -150,6 +151,9 @@ esp_err_t holiday_manager_update_full(const char *json) {
         s_version = new_ver;
     }
 
+    /* Extract msg_id for ACK */
+    cJSON *msg_id = cJSON_GetObjectItem(root, "msg_id");
+
     /* Parse ranges */
     cJSON *ranges_arr = cJSON_GetObjectItem(root, "ranges");
     s_range_count = 0;
@@ -197,10 +201,22 @@ esp_err_t holiday_manager_update_full(const char *json) {
         s_silent = cJSON_IsTrue(silent);
     }
 
-    cJSON_Delete(root);
     ESP_LOGI(TAG, "Updated: %d ranges, %d dates, ver=%lu, silent=%d",
              s_range_count, s_holiday_count, (unsigned long)s_version, s_silent);
-    return save_to_nvs();
+
+    esp_err_t err = save_to_nvs();
+
+    /* Send ACK after successful save */
+    if (err == ESP_OK && msg_id && cJSON_IsString(msg_id)) {
+        char ack_topic[96], ack_payload[128];
+        snprintf(ack_topic, sizeof(ack_topic), "devices/%s/ack", mqtt_client_get_device_id());
+        snprintf(ack_payload, sizeof(ack_payload),
+            "{\"msg_id\":\"%s\",\"status\":\"ok\"}", msg_id->valuestring);
+        mqtt_client_publish(ack_topic, ack_payload, 1);
+    }
+
+    cJSON_Delete(root);
+    return err;
 }
 
 esp_err_t holiday_manager_update(const char *json) {

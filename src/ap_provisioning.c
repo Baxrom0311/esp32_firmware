@@ -38,14 +38,27 @@ static const char HTML_PAGE[] =
     "<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
     "<title>SchoolBell WiFi</title>"
     "<style>body{font-family:sans-serif;max-width:400px;margin:40px auto;padding:20px}"
-    "input{width:100%;padding:10px;margin:8px 0;box-sizing:border-box;font-size:16px}"
-    "button{width:100%;padding:12px;background:#2196F3;color:#fff;border:none;font-size:18px;cursor:pointer}"
-    "h2{text-align:center}</style></head><body>"
+    "input,select{width:100%;padding:10px;margin:8px 0;box-sizing:border-box;font-size:16px}"
+    "button{width:100%;padding:12px;background:#2196F3;color:#fff;border:none;font-size:18px;cursor:pointer;margin-top:10px}"
+    ".scan-btn{background:#4CAF50;margin-bottom:15px}"
+    "h2{text-align:center}.nets{margin:10px 0}"
+    ".net{padding:8px;border:1px solid #ddd;margin:4px 0;cursor:pointer;border-radius:4px}"
+    ".net:hover{background:#e3f2fd}</style></head><body>"
     "<h2>WiFi Sozlash</h2>"
+    "<button class='scan-btn' onclick='scan()'>Tarmoqlarni qidirish</button>"
+    "<div id='nets' class='nets'></div>"
     "<form method='POST' action='/save'>"
-    "<label>WiFi nomi (SSID):</label><input name='ssid' maxlength='32' required>"
-    "<label>Parol:</label><input name='pass' type='password' minlength='8' maxlength='64' required>"
+    "<label>WiFi nomi (SSID):</label><input id='ssid' name='ssid' maxlength='32' required>"
+    "<label>Parol:</label><input name='pass' type='text' minlength='8' maxlength='64' required placeholder='Parolni kiriting'>"
     "<button type='submit'>Saqlash</button>"
+    "</form>"
+    "<script>"
+    "function scan(){document.getElementById('nets').innerHTML='Qidirilmoqda...';"
+    "fetch('/scan').then(r=>r.json()).then(d=>{"
+    "let h='';d.forEach(n=>h+=\"<div class='net' onclick=\\\"document.getElementById('ssid').value='\"+n.ssid+\"'\\\">\"+n.ssid+' ('+n.rssi+'dBm)</div>');"
+    "document.getElementById('nets').innerHTML=h||'Tarmoq topilmadi';}).catch(()=>document.getElementById('nets').innerHTML='Xato');}"
+    "scan();"
+    "</script>"
     "</form></body></html>";
 
 static const char HTML_SUCCESS[] =
@@ -73,6 +86,35 @@ static void set_security_headers(httpd_req_t *req)
     httpd_resp_set_hdr(req, "X-Content-Type-Options", "nosniff");
     httpd_resp_set_hdr(req, "X-Frame-Options", "DENY");
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+}
+
+
+static esp_err_t handler_scan(httpd_req_t *req)
+{
+    wifi_ap_record_t ap_info[10];
+    uint16_t ap_count = 10;
+    wifi_scan_config_t scan_cfg = {.show_hidden = false, .scan_type = WIFI_SCAN_TYPE_ACTIVE};
+    esp_err_t err = esp_wifi_scan_start(&scan_cfg, true);
+    if (err != ESP_OK) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "[]");
+        return ESP_OK;
+    }
+    esp_wifi_scan_get_ap_records(&ap_count, ap_info);
+    
+    char buf[512] = "[";
+    int pos = 1;
+    for (int i = 0; i < ap_count && pos < 480; i++) {
+        if (i > 0) buf[pos++] = ',';
+        pos += snprintf(buf + pos, sizeof(buf) - pos,
+            "{\"ssid\":\"%s\",\"rssi\":%d}",
+            (char*)ap_info[i].ssid, ap_info[i].rssi);
+    }
+    buf[pos++] = ']'; buf[pos] = 0;
+    
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, buf);
+    return ESP_OK;
 }
 
 static esp_err_t handler_get_root(httpd_req_t *req)
@@ -260,7 +302,7 @@ esp_err_t ap_provisioning_start(void)
 
     /* Start HTTP server */
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 5;
+    config.max_uri_handlers = 6;
     if (httpd_start(&s_httpd, &config) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start HTTP server");
         return ESP_FAIL;
@@ -274,6 +316,8 @@ esp_err_t ap_provisioning_start(void)
     httpd_register_uri_handler(s_httpd, &uri_root);
     httpd_register_uri_handler(s_httpd, &uri_204);
     httpd_register_uri_handler(s_httpd, &uri_ios);
+    httpd_uri_t uri_scan = {.uri = "/scan", .method = HTTP_GET, .handler = handler_scan};
+    httpd_register_uri_handler(s_httpd, &uri_scan);
     httpd_register_uri_handler(s_httpd, &uri_save);
 
     /* Start timeout timer (5 min) */

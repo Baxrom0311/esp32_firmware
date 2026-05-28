@@ -1,4 +1,5 @@
 #include "schedule_manager.h"
+#include "app_mqtt.h"
 #include "bell_controller.h"
 #include "holiday_manager.h"
 #include "wifi_manager.h"
@@ -100,6 +101,9 @@ esp_err_t schedule_manager_update(const char *json_payload)
         }
     }
 
+    /* Extract msg_id before parsing entries */
+    cJSON *msg_id = cJSON_GetObjectItem(root, "msg_id");
+
     cJSON *entries = cJSON_GetObjectItem(root, "entries");
     if (!cJSON_IsArray(entries)) {
         cJSON_Delete(root);
@@ -135,7 +139,6 @@ esp_err_t schedule_manager_update(const char *json_payload)
     } else {
         s_schedule_version++;
     }
-    cJSON_Delete(root);
 
     /* Save blob + CRC32 + sync timestamp */
     size_t blob_len = count * sizeof(schedule_entry_t);
@@ -146,9 +149,20 @@ esp_err_t schedule_manager_update(const char *json_payload)
         nvs_storage_set_blob(NVS_NAMESPACE_SCHEDULE, "ver", &s_schedule_version, sizeof(s_schedule_version));
         s_last_sync_time = time(NULL);
         nvs_storage_set_blob(NVS_NAMESPACE_SCHEDULE, "sync_ts", &s_last_sync_time, sizeof(s_last_sync_time));
+
+        /* Send ACK with version */
+        if (msg_id && cJSON_IsString(msg_id)) {
+            char ack_topic[96], ack_payload[160];
+            snprintf(ack_topic, sizeof(ack_topic), "devices/%s/ack", mqtt_client_get_device_id());
+            snprintf(ack_payload, sizeof(ack_payload),
+                "{\"msg_id\":\"%s\",\"status\":\"ok\",\"version\":%lu}",
+                msg_id->valuestring, (unsigned long)s_schedule_version);
+            mqtt_client_publish(ack_topic, ack_payload, 1);
+        }
     }
 
     ESP_LOGI(TAG, "Schedule updated: %d entries, NVS save: %s", count, esp_err_to_name(err));
+    cJSON_Delete(root);
     return err;
 }
 

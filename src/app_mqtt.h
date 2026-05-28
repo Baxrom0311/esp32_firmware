@@ -25,4 +25,9 @@ bool mqtt_client_is_connected(void);
  */
 esp_err_t mqtt_client_send_heartbeat(const char *device_id, int8_t rssi, uint32_t uptime_sec);
 
+/**
+ * Get the device ID used by MQTT client.
+ */
+const char *mqtt_client_get_device_id(void);
+
 #endif

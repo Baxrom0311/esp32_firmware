@@ -88,8 +88,19 @@ static void mqtt_dispatch_command(const char *json_data)
         }
     } else if (strcmp(command, "reboot") == 0) {
         ESP_LOGI(TAG, "Reboot command received");
+        /* Send ACK before reboot */
+        cJSON *msg_id = cJSON_GetObjectItem(root, "msg_id");
+        if (msg_id && cJSON_IsString(msg_id)) {
+            char ack_topic[96], ack_payload[128];
+            snprintf(ack_topic, sizeof(ack_topic), "devices/%s/ack", s_device_id);
+            snprintf(ack_payload, sizeof(ack_payload),
+                "{\"msg_id\":\"%s\",\"status\":\"ok\"}", msg_id->valuestring);
+            mqtt_client_publish(ack_topic, ack_payload, 1);
+        }
+        cJSON_Delete(root);
         vTaskDelay(pdMS_TO_TICKS(500));
         esp_restart();
+        return;
     } else if (strcmp(command, "silent") == 0) {
         cJSON *state = cJSON_GetObjectItem(root, "state");
         bool on = cJSON_IsTrue(state);
@@ -107,6 +118,16 @@ static void mqtt_dispatch_command(const char *json_data)
         }
     }
 
+    /* Send ACK after command execution */
+    cJSON *msg_id = cJSON_GetObjectItem(root, "msg_id");
+    if (msg_id && cJSON_IsString(msg_id)) {
+        char ack_topic[96], ack_payload[128];
+        snprintf(ack_topic, sizeof(ack_topic), "devices/%s/ack", s_device_id);
+        snprintf(ack_payload, sizeof(ack_payload),
+            "{\"msg_id\":\"%s\",\"status\":\"ok\"}", msg_id->valuestring);
+        mqtt_client_publish(ack_topic, ack_payload, 1);
+    }
+
     cJSON_Delete(root);
 }
 
@@ -122,6 +143,16 @@ static void mqtt_dispatch_config(const char *json_data)
         setenv("TZ", tz->valuestring, 1);
         tzset();
         ESP_LOGI(TAG, "Timezone updated to: %s", tz->valuestring);
+    }
+
+    /* Send ACK for config update */
+    cJSON *cfg_msg_id = cJSON_GetObjectItem(root, "msg_id");
+    if (cfg_msg_id && cJSON_IsString(cfg_msg_id)) {
+        char ack_topic[96], ack_payload[128];
+        snprintf(ack_topic, sizeof(ack_topic), "devices/%s/ack", s_device_id);
+        snprintf(ack_payload, sizeof(ack_payload),
+            "{\"msg_id\":\"%s\",\"status\":\"ok\"}", cfg_msg_id->valuestring);
+        mqtt_client_publish(ack_topic, ack_payload, 1);
     }
 
     cJSON_Delete(root);
@@ -265,6 +296,11 @@ esp_err_t mqtt_client_publish(const char *topic, const char *data, int qos)
 bool mqtt_client_is_connected(void)
 {
     return s_connected;
+}
+
+const char *mqtt_client_get_device_id(void)
+{
+    return s_device_id;
 }
 
 esp_err_t mqtt_client_send_heartbeat(const char *device_id, int8_t rssi, uint32_t uptime_sec)
