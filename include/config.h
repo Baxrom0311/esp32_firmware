@@ -3,8 +3,8 @@
 /* WiFi defaults (used if NVS is empty — must be provisioned via AP mode) */
 #define DEFAULT_WIFI_SSID       ""
 #define DEFAULT_WIFI_PASS       ""
-/* MQTT (TLS) */
-#define MQTT_BROKER_URI         "mqtts://146.190.210.125:8883"
+/* MQTT */
+#define MQTT_BROKER_URI         "mqtt://146.190.210.125:1883"
 #define MQTT_KEEPALIVE_SEC      30
 /* API */
 #define API_BASE_URL            "https://bell.boos.uz"
