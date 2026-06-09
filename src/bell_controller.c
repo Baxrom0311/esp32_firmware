@@ -3,6 +3,7 @@
 #include "nvs_storage.h"
 #include <time.h>
 #include <string.h>
+#include <stdlib.h>
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "hal/gpio_ll.h"
@@ -23,6 +24,11 @@ typedef struct __attribute__((packed)) {
 
 static offline_bell_log_t s_offline_log[OFFLINE_LOG_MAX];
 static uint8_t s_offline_log_count = 0;
+
+typedef struct {
+    uint32_t duration_ms;
+    char source[16];
+} ring_task_arg_t;
 
 static void offline_log_save(time_t ts, uint32_t duration_ms)
 {
@@ -75,7 +81,8 @@ void bell_controller_flush_offline_log(void)
 
     for (int i = 0; i < s_offline_log_count; i++) {
         struct tm t;
-        localtime_r(&s_offline_log[i].timestamp, &t);
+        time_t ts = s_offline_log[i].timestamp;
+        localtime_r(&ts, &t);
         char payload[160];
         snprintf(payload, sizeof(payload),
                  "{\"time\":\"%04d-%02d-%02dT%02d:%02d:%02d\",\"duration\":%lu,\"source\":\"offline\"}",
@@ -110,7 +117,13 @@ esp_err_t bell_controller_init(void)
 
 static void ring_task(void *arg)
 {
-    uint32_t duration_ms = (uint32_t)(uintptr_t)arg;
+    ring_task_arg_t task_arg = {0};
+    if (arg) {
+        task_arg = *(ring_task_arg_t *)arg;
+        free(arg);
+    }
+    uint32_t duration_ms = task_arg.duration_ms;
+    const char *source = task_arg.source[0] ? task_arg.source : "schedule";
     gpio_set_level(BELL_GPIO_PIN, 0); /* active-low relay ON */
     ESP_LOGI(TAG, "Bell ON for %lu ms", (unsigned long)duration_ms);
     vTaskDelay(pdMS_TO_TICKS(duration_ms));
@@ -130,9 +143,9 @@ static void ring_task(void *arg)
         struct tm t; localtime_r(&now, &t);
         snprintf(topic, sizeof(topic), "devices/%s/bell_log", dev_id);
         snprintf(payload, sizeof(payload),
-            "{\"time\":\"%04d-%02d-%02dT%02d:%02d:%02d\",\"duration\":%lu,\"source\":\"schedule\"}",
+            "{\"time\":\"%04d-%02d-%02dT%02d:%02d:%02d\",\"duration\":%lu,\"source\":\"%s\"}",
             t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-            t.tm_hour, t.tm_min, t.tm_sec, (unsigned long)duration_ms);
+            t.tm_hour, t.tm_min, t.tm_sec, (unsigned long)duration_ms, source);
         mqtt_client_publish(topic, payload, 1);
     } else {
         /* Offline — save to NVS for later upload */
@@ -146,6 +159,11 @@ static void ring_task(void *arg)
 
 esp_err_t bell_controller_ring(uint32_t duration_ms)
 {
+    return bell_controller_ring_with_source(duration_ms, "schedule");
+}
+
+esp_err_t bell_controller_ring_with_source(uint32_t duration_ms, const char *source)
+{
     if (duration_ms == 0) {
         duration_ms = BELL_DEFAULT_DURATION_MS;
     }
@@ -158,13 +176,32 @@ esp_err_t bell_controller_ring(uint32_t duration_ms)
         ESP_LOGW(TAG, "Bell already ringing, ignoring");
         return ESP_ERR_INVALID_STATE;
     }
+
+    ring_task_arg_t *arg = calloc(1, sizeof(ring_task_arg_t));
+    if (!arg) {
+        xSemaphoreGive(s_ring_mutex);
+        return ESP_ERR_NO_MEM;
+    }
+    arg->duration_ms = duration_ms;
+    if (source && source[0]) {
+        strlcpy(arg->source, source, sizeof(arg->source));
+    } else {
+        strlcpy(arg->source, "schedule", sizeof(arg->source));
+    }
+
     BaseType_t ret = xTaskCreate(ring_task, "bell_ring", 8192,
-                                 (void *)(uintptr_t)duration_ms, 5, NULL);
+                                 arg, 5, NULL);
     if (ret != pdPASS) {
+        free(arg);
         xSemaphoreGive(s_ring_mutex);
         return ESP_FAIL;
     }
     return ESP_OK;
+}
+
+void bell_controller_stop(void)
+{
+    gpio_set_level(BELL_GPIO_PIN, 1); /* active-low relay OFF */
 }
 
 void bell_controller_panic_off(void)

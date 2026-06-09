@@ -57,9 +57,10 @@ esp_err_t device_registration_register(void)
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     /* Build request body */
-    char post_data[128];
+    char post_data[192];
     snprintf(post_data, sizeof(post_data),
-             "{\"device_id\":\"%s\",\"firmware_version\":\"%s\"}", mac_str, FW_VERSION);
+             "{\"device_id\":\"%s\",\"firmware_version\":\"%s\",\"hw_version\":\"%s\"}",
+             mac_str, FW_VERSION, HW_VERSION);
 
     char url[192];
     snprintf(url, sizeof(url), "%s%s", API_BASE_URL, API_REGISTER_PATH);

@@ -47,5 +47,7 @@
 #define OTA_ALLOWED_HOST_2      "146.190.210.125"
 /* Firmware version */
 #define FW_VERSION              "1.0.0"
+/* Hardware revision — bump when PCB, sensors, or GPIO mapping changes */
+#define HW_VERSION              "1.0"
 /* BLE Provisioning */
 #endif /* CONFIG_H */

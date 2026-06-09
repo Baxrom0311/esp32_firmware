@@ -267,9 +267,9 @@ static void publish_sync_request(void)
     char topic[96], payload[256];
     snprintf(topic, sizeof(topic), "devices/%s/sync", s_device_id);
     snprintf(payload, sizeof(payload),
-             "{\"schedule_version\":%lu,\"fw\":\"%s\",\"stale\":%s}",
+             "{\"schedule_version\":%lu,\"fw\":\"%s\",\"hw\":\"%s\",\"stale\":%s}",
              (unsigned long)schedule_manager_get_version(),
-             FW_VERSION,
+             FW_VERSION, HW_VERSION,
              schedule_manager_is_stale() ? "true" : "false");
     esp_mqtt_client_publish(s_client, topic, payload, 0, 1, 0);
     ESP_LOGI(TAG, "Sync request sent: %s", payload);
@@ -367,10 +367,10 @@ esp_err_t mqtt_client_send_heartbeat(const char *device_id, int8_t rssi, uint32_
     snprintf(topic, sizeof(topic), "devices/%s/status", device_id);
 
     uint32_t free_heap = esp_get_free_heap_size();
-    char payload[160];
+    char payload[224];
     snprintf(payload, sizeof(payload),
-             "{\"status\":\"online\",\"rssi\":%d,\"uptime\":%lu,\"fw\":\"%s\",\"heap\":%lu}",
-             rssi, (unsigned long)uptime_sec, FW_VERSION, (unsigned long)free_heap);
+             "{\"status\":\"online\",\"rssi\":%d,\"uptime\":%lu,\"fw\":\"%s\",\"hw\":\"%s\",\"heap\":%lu}",
+             rssi, (unsigned long)uptime_sec, FW_VERSION, HW_VERSION, (unsigned long)free_heap);
 
     return mqtt_client_publish(topic, payload, 0);
 }
