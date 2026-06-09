@@ -1,13 +1,13 @@
 #ifndef CONFIG_H
 #define CONFIG_H
-/* WiFi defaults (used if NVS is empty) */
-#define DEFAULT_WIFI_SSID       "12"
-#define DEFAULT_WIFI_PASS       "12345678"
-/* MQTT */
-#define MQTT_BROKER_URI         "mqtt://146.190.210.125:1883"
+/* WiFi defaults (used if NVS is empty — must be provisioned via AP mode) */
+#define DEFAULT_WIFI_SSID       ""
+#define DEFAULT_WIFI_PASS       ""
+/* MQTT (TLS) */
+#define MQTT_BROKER_URI         "mqtts://146.190.210.125:8883"
 #define MQTT_KEEPALIVE_SEC      30
 /* API */
-#define API_BASE_URL            "http://bell.boos.uz"
+#define API_BASE_URL            "https://bell.boos.uz"
 #define API_REGISTER_PATH       "/api/v1/device/auto-register/"
 #define API_ACTIVATE_PATH       "/api/v1/device/activate/"
 #define API_CREDENTIALS_PATH    "/api/v1/device/credentials/"

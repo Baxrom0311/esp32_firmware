@@ -41,10 +41,13 @@ esp_err_t schedule_manager_init(void)
         uint32_t calc_crc = compute_crc(s_entries, len);
 
         if (crc_err != ESP_OK || stored_crc != calc_crc) {
-            ESP_LOGE(TAG, "Schedule CRC mismatch (stored=0x%08lx calc=0x%08lx), discarding",
+            ESP_LOGW(TAG, "Schedule CRC mismatch (stored=0x%08lx calc=0x%08lx), keeping data as fallback",
                      (unsigned long)stored_crc, (unsigned long)calc_crc);
-            nvs_storage_erase_namespace(NVS_NAMESPACE_SCHEDULE);
-            s_entry_count = 0;
+            /* Keep potentially corrupted data as fallback rather than erasing.
+             * Device will still ring (possibly wrong times) until next MQTT sync,
+             * which is better than no bells at all when offline. */
+            s_entry_count = len / sizeof(schedule_entry_t);
+            if (s_entry_count > MAX_SCHEDULE_ENTRIES) s_entry_count = MAX_SCHEDULE_ENTRIES;
             return ESP_OK;
         }
 

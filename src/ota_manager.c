@@ -24,7 +24,12 @@ typedef struct {
 
 static bool validate_ota_host(const char *url)
 {
-    /* Skip "https://" prefix */
+    /* Require https:// prefix */
+    if (strncmp(url, "https://", 8) != 0) {
+        ESP_LOGE(TAG, "OTA URL must use HTTPS");
+        return false;
+    }
+
     const char *host_start = url + 8;
     const char *host_end = strchr(host_start, '/');
     if (!host_end) host_end = host_start + strlen(host_start);
@@ -34,7 +39,9 @@ static bool validate_ota_host(const char *url)
     if (port && port < host_end) host_end = port;
 
     size_t host_len = host_end - host_start;
+    if (host_len == 0 || host_len > 253) return false;
 
+    /* Exact match only — no subdomain spoofing */
     const char *allowed[] = { OTA_ALLOWED_HOST, OTA_ALLOWED_HOST_2 };
     for (int i = 0; i < sizeof(allowed) / sizeof(allowed[0]); i++) {
         if (strlen(allowed[i]) == host_len &&
@@ -55,9 +62,15 @@ static esp_err_t validate_image_header(const esp_app_desc_t *incoming)
         return ESP_OK;
     }
 
-    /* Reject same version (prevent re-flash of identical firmware) */
-    if (memcmp(incoming->version, running_desc.version, sizeof(running_desc.version)) == 0) {
+    /* Reject same or older version (prevent re-flash and downgrade attacks) */
+    int cmp = strncmp(incoming->version, running_desc.version, sizeof(running_desc.version));
+    if (cmp == 0) {
         ESP_LOGW(TAG, "OTA image version same as running (%s), skipping", running_desc.version);
+        return ESP_ERR_INVALID_VERSION;
+    }
+    if (cmp < 0) {
+        ESP_LOGE(TAG, "OTA downgrade rejected: incoming '%s' < running '%s'",
+                 incoming->version, running_desc.version);
         return ESP_ERR_INVALID_VERSION;
     }
 
