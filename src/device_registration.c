@@ -76,6 +76,10 @@ esp_err_t device_registration_register(void)
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to init HTTP client");
+        return ESP_FAIL;
+    }
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, post_data, strlen(post_data));
 
@@ -132,8 +136,11 @@ esp_err_t device_registration_register(void)
     }
 
     strncpy(s_device_id, id->valuestring, sizeof(s_device_id) - 1);
+    s_device_id[sizeof(s_device_id) - 1] = '\0';
     strncpy(s_mqtt_user, mqtt_u->valuestring, sizeof(s_mqtt_user) - 1);
+    s_mqtt_user[sizeof(s_mqtt_user) - 1] = '\0';
     strncpy(s_mqtt_pass, mqtt_p->valuestring, sizeof(s_mqtt_pass) - 1);
+    s_mqtt_pass[sizeof(s_mqtt_pass) - 1] = '\0';
     cJSON_Delete(root);
 
     /* Save to NVS */
@@ -196,6 +203,10 @@ esp_err_t device_registration_fetch_credentials(const char *api_key)
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&cfg);
+    if (client == NULL) {
+        ESP_LOGE(TAG, "Failed to init HTTP client for credentials");
+        return ESP_FAIL;
+    }
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, post_data, strlen(post_data));
 
@@ -228,9 +239,12 @@ esp_err_t device_registration_fetch_credentials(const char *api_key)
 
     if (id && cJSON_IsString(id)) {
         strncpy(s_device_id, id->valuestring, sizeof(s_device_id) - 1);
+        s_device_id[sizeof(s_device_id) - 1] = '\0';
     }
     strncpy(s_mqtt_user, mqtt_u->valuestring, sizeof(s_mqtt_user) - 1);
+    s_mqtt_user[sizeof(s_mqtt_user) - 1] = '\0';
     strncpy(s_mqtt_pass, mqtt_p->valuestring, sizeof(s_mqtt_pass) - 1);
+    s_mqtt_pass[sizeof(s_mqtt_pass) - 1] = '\0';
     cJSON_Delete(root);
 
     nvs_storage_set_str(NVS_NAMESPACE_DEVICE, "id", s_device_id);

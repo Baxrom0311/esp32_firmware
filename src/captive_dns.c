@@ -40,8 +40,10 @@ static void dns_task(void *arg)
         resp[6] = 0x00;
         resp[7] = 0x01;
 
-        /* Append answer: pointer to question name + A record */
+        /* Append answer: pointer to question name + A record (16 bytes) */
         int pos = len;
+        if (pos + 16 > DNS_BUF_SIZE) continue;  /* Bounds check: prevent overflow */
+
         resp[pos++] = 0xC0;  /* Name pointer */
         resp[pos++] = 0x0C;  /* Offset to question name */
         resp[pos++] = 0x00; resp[pos++] = 0x01;  /* Type A */

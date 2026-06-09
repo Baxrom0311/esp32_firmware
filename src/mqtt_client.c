@@ -12,6 +12,9 @@
 #include "schedule_manager.h"
 #include "cJSON.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +26,7 @@ static const char *TAG = "mqtt";
 static esp_mqtt_client_handle_t s_client = NULL;
 static _Atomic bool s_connected = false;
 static char s_device_id[64] = {0};
+static SemaphoreHandle_t s_publish_mutex = NULL;
 
 /* Reassembly buffer for fragmented MQTT messages */
 static char *s_frag_buf = NULL;
@@ -139,10 +143,15 @@ static void mqtt_dispatch_config(const char *json_data)
     /* Handle timezone config: {"tz": "UTC-5"} */
     cJSON *tz = cJSON_GetObjectItem(root, "tz");
     if (tz && cJSON_IsString(tz)) {
-        nvs_storage_set_str(NVS_NAMESPACE_CONFIG, "tz", tz->valuestring);
-        setenv("TZ", tz->valuestring, 1);
-        tzset();
-        ESP_LOGI(TAG, "Timezone updated to: %s", tz->valuestring);
+        size_t tz_len = strlen(tz->valuestring);
+        if (tz_len > 0 && tz_len < 64) {
+            nvs_storage_set_str(NVS_NAMESPACE_CONFIG, "tz", tz->valuestring);
+            setenv("TZ", tz->valuestring, 1);
+            tzset();
+            ESP_LOGI(TAG, "Timezone updated to: %s", tz->valuestring);
+        } else {
+            ESP_LOGW(TAG, "Invalid timezone string length: %d", (int)tz_len);
+        }
     }
 
     /* Send ACK for config update */
@@ -251,7 +260,7 @@ esp_err_t mqtt_client_init(const char *device_id, const char *username, const ch
 
     esp_mqtt_client_config_t cfg = {
         .broker.address.uri = MQTT_BROKER_URI,
-        /* .broker.verification.certificate = ca_cert_pem, */ /* disabled: using mqtt:// not mqtts:// */
+        .broker.verification.certificate = ca_cert_pem,
         .credentials = {
             .username = username,
             .client_id = client_id,
@@ -270,6 +279,10 @@ esp_err_t mqtt_client_init(const char *device_id, const char *username, const ch
         .network.reconnect_timeout_ms = MQTT_RECONNECT_DELAY_MS,
     };
 
+    if (!s_publish_mutex) {
+        s_publish_mutex = xSemaphoreCreateMutex();
+    }
+
     s_client = esp_mqtt_client_init(&cfg);
     if (s_client == NULL) {
         ESP_LOGE(TAG, "Failed to init MQTT client");
@@ -286,11 +299,23 @@ esp_err_t mqtt_client_init(const char *device_id, const char *username, const ch
 
 esp_err_t mqtt_client_publish(const char *topic, const char *data, int qos)
 {
-    if (!s_connected || s_client == NULL) {
+    if (!s_connected || s_client == NULL || !s_publish_mutex) {
         return ESP_ERR_INVALID_STATE;
     }
-    int msg_id = esp_mqtt_client_publish(s_client, topic, data, 0, qos, 0);
-    return (msg_id >= 0) ? ESP_OK : ESP_FAIL;
+    if (xSemaphoreTake(s_publish_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
+        ESP_LOGW(TAG, "Publish mutex timeout");
+        return ESP_ERR_TIMEOUT;
+    }
+    /* Re-check after acquiring mutex — connection may have dropped */
+    esp_err_t ret;
+    if (!s_connected || s_client == NULL) {
+        ret = ESP_ERR_INVALID_STATE;
+    } else {
+        int msg_id = esp_mqtt_client_publish(s_client, topic, data, 0, qos, 0);
+        ret = (msg_id >= 0) ? ESP_OK : ESP_FAIL;
+    }
+    xSemaphoreGive(s_publish_mutex);
+    return ret;
 }
 
 bool mqtt_client_is_connected(void)

@@ -168,11 +168,18 @@ esp_err_t holiday_manager_update_full(const char *json) {
             cJSON *td = cJSON_GetObjectItem(item, "to_day");
             if (cJSON_IsNumber(fm) && cJSON_IsNumber(fd) &&
                 cJSON_IsNumber(tm) && cJSON_IsNumber(td)) {
-                s_ranges[s_range_count].from_month = (uint8_t)fm->valueint;
-                s_ranges[s_range_count].from_day = (uint8_t)fd->valueint;
-                s_ranges[s_range_count].to_month = (uint8_t)tm->valueint;
-                s_ranges[s_range_count].to_day = (uint8_t)td->valueint;
-                s_range_count++;
+                int fmv = fm->valueint, fdv = fd->valueint;
+                int tmv = tm->valueint, tdv = td->valueint;
+                if (fmv >= 1 && fmv <= 12 && fdv >= 1 && fdv <= 31 &&
+                    tmv >= 1 && tmv <= 12 && tdv >= 1 && tdv <= 31) {
+                    s_ranges[s_range_count].from_month = (uint8_t)fmv;
+                    s_ranges[s_range_count].from_day = (uint8_t)fdv;
+                    s_ranges[s_range_count].to_month = (uint8_t)tmv;
+                    s_ranges[s_range_count].to_day = (uint8_t)tdv;
+                    s_range_count++;
+                } else {
+                    ESP_LOGW(TAG, "Skipping invalid range: %d/%d - %d/%d", fmv, fdv, tmv, tdv);
+                }
             }
         }
     }
@@ -188,9 +195,14 @@ esp_err_t holiday_manager_update_full(const char *json) {
             cJSON *m = cJSON_GetObjectItem(item, "month");
             cJSON *d = cJSON_GetObjectItem(item, "day");
             if (cJSON_IsNumber(m) && cJSON_IsNumber(d)) {
-                s_holidays[s_holiday_count].month = (uint8_t)m->valueint;
-                s_holidays[s_holiday_count].day = (uint8_t)d->valueint;
-                s_holiday_count++;
+                int mv = m->valueint, dv = d->valueint;
+                if (mv >= 1 && mv <= 12 && dv >= 1 && dv <= 31) {
+                    s_holidays[s_holiday_count].month = (uint8_t)mv;
+                    s_holidays[s_holiday_count].day = (uint8_t)dv;
+                    s_holiday_count++;
+                } else {
+                    ESP_LOGW(TAG, "Skipping invalid date: %d/%d", mv, dv);
+                }
             }
         }
     }
@@ -246,9 +258,12 @@ esp_err_t holiday_manager_update(const char *json) {
         cJSON *m = cJSON_GetObjectItem(item, "month");
         cJSON *d = cJSON_GetObjectItem(item, "day");
         if (cJSON_IsNumber(m) && cJSON_IsNumber(d)) {
-            s_holidays[s_holiday_count].month = (uint8_t)m->valueint;
-            s_holidays[s_holiday_count].day = (uint8_t)d->valueint;
-            s_holiday_count++;
+            int mv = m->valueint, dv = d->valueint;
+            if (mv >= 1 && mv <= 12 && dv >= 1 && dv <= 31) {
+                s_holidays[s_holiday_count].month = (uint8_t)mv;
+                s_holidays[s_holiday_count].day = (uint8_t)dv;
+                s_holiday_count++;
+            }
         }
     }
 

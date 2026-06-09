@@ -5,6 +5,8 @@
 #include "app_mqtt.h"
 #include "bell_controller.h"
 #include "schedule_manager.h"
+#include "holiday_manager.h"
+#include "rtc_diagnostics.h"
 #include "device_registration.h"
 #include "status_reporter.h"
 #include "rtc_driver.h"
@@ -152,8 +154,10 @@ void app_main(void)
         ESP_LOGW(TAG, "WiFi failed, running offline with cached schedule");
     }
 
-    /* 5. Load schedule from NVS (works offline) */
+    /* 5. Load schedule and holidays from NVS (works offline) */
     schedule_manager_init();
+    holiday_manager_init();
+    rtc_diagnostics_init();
 
     /* 6. If online: sync time, register device, connect MQTT */
     uint32_t sntp_last_sync = 0;
@@ -186,6 +190,7 @@ void app_main(void)
         esp_task_wdt_reset();
 
         schedule_manager_tick();
+        rtc_diagnostics_tick();
 
         if (device_registration_is_registered()) {
             status_reporter_tick(device_registration_get_id());
@@ -200,6 +205,7 @@ void app_main(void)
         bool now_connected = wifi_manager_is_connected();
         if (was_connected && !now_connected) {
             ESP_LOGW(TAG, "WiFi lost");
+            sntp_last_sync = 0;  /* Force SNTP re-init on reconnect */
         }
         if (now_connected && !was_connected) {
             ESP_LOGI(TAG, "WiFi restored");

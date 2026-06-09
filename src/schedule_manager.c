@@ -10,6 +10,8 @@
 #include "esp_sntp.h"
 #include "nvs.h"
 #include "cJSON.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include <string.h>
 #include <time.h>
@@ -23,6 +25,7 @@ static schedule_entry_t s_entries[MAX_SCHEDULE_ENTRIES];
 static int s_entry_count = 0;
 static uint32_t s_schedule_version = 0;
 static time_t s_last_sync_time = 0;  /* epoch when schedule was last updated */
+static SemaphoreHandle_t s_schedule_mutex = NULL;
 
 static uint32_t compute_crc(const void *data, size_t len)
 {
@@ -31,6 +34,10 @@ static uint32_t compute_crc(const void *data, size_t len)
 
 esp_err_t schedule_manager_init(void)
 {
+    if (!s_schedule_mutex) {
+        s_schedule_mutex = xSemaphoreCreateMutex();
+    }
+
     size_t len = sizeof(s_entries);
     esp_err_t err = nvs_storage_get_blob(NVS_NAMESPACE_SCHEDULE, "data", s_entries, &len);
     if (err == ESP_OK && len > 0) {
@@ -113,6 +120,8 @@ esp_err_t schedule_manager_update(const char *json_payload)
         return ESP_ERR_INVALID_ARG;
     }
 
+    /* Parse entries into a temp buffer, then swap under mutex */
+    schedule_entry_t tmp_entries[MAX_SCHEDULE_ENTRIES];
     int count = 0;
     cJSON *item;
     cJSON_ArrayForEach(item, entries) {
@@ -126,17 +135,24 @@ esp_err_t schedule_manager_update(const char *json_payload)
             ESP_LOGW(TAG, "Skipping invalid time %d:%d", h, m);
             continue;
         }
-        s_entries[count].hour = (uint8_t)h;
-        s_entries[count].minute = (uint8_t)m;
+        tmp_entries[count].hour = (uint8_t)h;
+        tmp_entries[count].minute = (uint8_t)m;
         cJSON *dur = cJSON_GetObjectItem(item, "duration");
-        s_entries[count].duration_ms = (dur && cJSON_IsNumber(dur)) ?
-            dur->valueint : BELL_DEFAULT_DURATION_MS;
+        int dur_val = (dur && cJSON_IsNumber(dur)) ? dur->valueint : BELL_DEFAULT_DURATION_MS;
+        if (dur_val < 100) dur_val = 100;
+        if (dur_val > (int)BELL_MAX_DURATION_MS) dur_val = BELL_MAX_DURATION_MS;
+        tmp_entries[count].duration_ms = (uint32_t)dur_val;
         cJSON *days = cJSON_GetObjectItem(item, "days");
-        s_entries[count].days_mask = (days && cJSON_IsNumber(days)) ?
+        tmp_entries[count].days_mask = (days && cJSON_IsNumber(days)) ?
             days->valueint : 0x7F;
         count++;
     }
+
+    /* Atomically swap entries under mutex */
+    if (s_schedule_mutex) xSemaphoreTake(s_schedule_mutex, portMAX_DELAY);
+    memcpy(s_entries, tmp_entries, count * sizeof(schedule_entry_t));
     s_entry_count = count;
+    if (s_schedule_mutex) xSemaphoreGive(s_schedule_mutex);
     if (ver && cJSON_IsNumber(ver)) {
         s_schedule_version = (uint32_t)ver->valueint;
     } else {
@@ -182,7 +198,6 @@ void schedule_manager_tick(void)
         return;
     }
 
-
     localtime_r(&now, &timeinfo);
 
     /* Skip all bells if today is a holiday or silent mode is active */
@@ -214,13 +229,21 @@ void schedule_manager_tick(void)
 
     if (cur_hhmm == s_last_triggered_hhmm && timeinfo.tm_mday == s_last_triggered_day) return;
 
+    /* Take a snapshot of entries under mutex to avoid race with MQTT update */
+    schedule_entry_t local_entries[MAX_SCHEDULE_ENTRIES];
+    int local_count;
+    if (s_schedule_mutex) xSemaphoreTake(s_schedule_mutex, portMAX_DELAY);
+    local_count = s_entry_count;
+    memcpy(local_entries, s_entries, local_count * sizeof(schedule_entry_t));
+    if (s_schedule_mutex) xSemaphoreGive(s_schedule_mutex);
+
     bool triggered = false;
-    for (int i = 0; i < s_entry_count; i++) {
-        if (s_entries[i].hour == cur_hour && s_entries[i].minute == cur_min) {
-            if (s_entries[i].days_mask & (1 << cur_wday)) {
+    for (int i = 0; i < local_count; i++) {
+        if (local_entries[i].hour == cur_hour && local_entries[i].minute == cur_min) {
+            if (local_entries[i].days_mask & (1 << cur_wday)) {
                 ESP_LOGI(TAG, "Triggering bell: entry %d (%02d:%02d)",
                          i, cur_hour, cur_min);
-                bell_controller_ring(s_entries[i].duration_ms);
+                bell_controller_ring(local_entries[i].duration_ms);
                 triggered = true;
             }
         }

@@ -70,7 +70,7 @@ esp_err_t bell_controller_ring(uint32_t duration_ms)
         ESP_LOGW(TAG, "Bell already ringing, ignoring");
         return ESP_ERR_INVALID_STATE;
     }
-    BaseType_t ret = xTaskCreate(ring_task, "bell_ring", 4096,
+    BaseType_t ret = xTaskCreate(ring_task, "bell_ring", 8192,
                                  (void *)(uintptr_t)duration_ms, 5, NULL);
     if (ret != pdPASS) {
         xSemaphoreGive(s_ring_mutex);

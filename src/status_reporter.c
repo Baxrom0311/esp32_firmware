@@ -15,7 +15,7 @@ static int64_t s_boot_time_us = 0;
 static bool s_initialized = false;
 
 /* Heap monitoring: track samples to detect leaks */
-#define HEAP_HISTORY_SIZE 5
+#define HEAP_HISTORY_SIZE 10
 static uint32_t s_heap_history[HEAP_HISTORY_SIZE];
 static int s_heap_idx = 0;
 static bool s_heap_full = false;
