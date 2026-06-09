@@ -33,11 +33,13 @@ void bell_controller_stop(void);
 void bell_controller_panic_off(void);
 
 /**
- * Set relay 2 state (door lock / extra signal).
+ * Load offline bell logs from NVS (call at boot).
  */
+void bell_controller_load_offline_log(void);
 
 /**
- * Get current relay 2 state.
+ * Flush queued offline bell logs via MQTT (call after MQTT connects).
  */
+void bell_controller_flush_offline_log(void);
 
 #endif

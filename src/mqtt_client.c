@@ -50,6 +50,8 @@ static void build_topics(const char *device_id)
     snprintf(s_topic_holidays, sizeof(s_topic_holidays), "devices/%s/holidays", device_id);
 }
 
+static void publish_sync_request(void);
+
 static void subscribe_topics(void)
 {
     esp_mqtt_client_subscribe(s_client, s_topic_command, 1);
@@ -57,6 +59,9 @@ static void subscribe_topics(void)
     esp_mqtt_client_subscribe(s_client, s_topic_config, 1);
     esp_mqtt_client_subscribe(s_client, s_topic_holidays, 1);
     ESP_LOGI(TAG, "Subscribed to device topics");
+
+    /* After subscribing, publish our current state so backend can send delta */
+    publish_sync_request();
 }
 
 static void mqtt_dispatch_command(const char *json_data)
@@ -175,6 +180,13 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT connected");
         s_connected = true;
+        /* Publish online status as retained — dashboard always sees current state */
+        {
+            char online_payload[64];
+            snprintf(online_payload, sizeof(online_payload),
+                     "{\"status\":\"online\",\"fw\":\"%s\"}", FW_VERSION);
+            esp_mqtt_client_publish(s_client, s_topic_status, online_payload, 0, 1, 1);
+        }
         subscribe_topics();
         break;
 
@@ -243,6 +255,26 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
     }
 }
 
+/**
+ * Publish sync request on every MQTT connect/reconnect.
+ * Tells the backend our current schedule/holiday versions so it can push updates if needed.
+ */
+static void publish_sync_request(void)
+{
+    extern uint32_t schedule_manager_get_version(void);
+    extern bool schedule_manager_is_stale(void);
+
+    char topic[96], payload[256];
+    snprintf(topic, sizeof(topic), "devices/%s/sync", s_device_id);
+    snprintf(payload, sizeof(payload),
+             "{\"schedule_version\":%lu,\"fw\":\"%s\",\"stale\":%s}",
+             (unsigned long)schedule_manager_get_version(),
+             FW_VERSION,
+             schedule_manager_is_stale() ? "true" : "false");
+    esp_mqtt_client_publish(s_client, topic, payload, 0, 1, 0);
+    ESP_LOGI(TAG, "Sync request sent: %s", payload);
+}
+
 esp_err_t mqtt_client_init(const char *device_id, const char *username, const char *password)
 {
     if (s_client != NULL) {
@@ -269,6 +301,7 @@ esp_err_t mqtt_client_init(const char *device_id, const char *username, const ch
             },
         },
         .session.keepalive = MQTT_KEEPALIVE_SEC,
+        .session.disable_clean_session = true,  /* Persistent session: broker queues QoS 1 messages while offline */
         .session.last_will = {
             .topic = s_topic_status,
             .msg = lwt_payload,

@@ -193,8 +193,15 @@ void schedule_manager_tick(void)
     struct tm timeinfo;
     time(&now);
 
-    /* Time validity check: skip if SNTP hasn't synced yet (pre-2020 timestamp) */
+    /* Time validity check: skip if time is clearly invalid (pre-2020).
+     * RTC (DS1307) provides valid time even without SNTP/WiFi,
+     * so this only triggers on first boot with dead RTC battery. */
     if (now < 1577836800) { /* 2020-01-01 00:00:00 UTC */
+        static bool s_time_warn_logged = false;
+        if (!s_time_warn_logged) {
+            ESP_LOGW(TAG, "System time invalid (pre-2020), bells paused until RTC/SNTP provides valid time");
+            s_time_warn_logged = true;
+        }
         return;
     }
 

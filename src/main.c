@@ -145,8 +145,9 @@ void app_main(void)
     /* 3. Apply timezone from NVS (or default) */
     rtc_driver_init();
 
-    /* 3. Initialize bell GPIO */
+    /* 3. Initialize bell GPIO and load offline bell logs */
     ESP_ERROR_CHECK(bell_controller_init());
+    bell_controller_load_offline_log();
 
     /* 4. Connect to WiFi */
     esp_err_t wifi_err = wifi_manager_init_with_fallback(wifi_fallback_handler);
@@ -219,6 +220,8 @@ void app_main(void)
                                  device_registration_get_mqtt_user(),
                                  device_registration_get_mqtt_pass());
             }
+            /* Flush any bell logs queued while offline */
+            bell_controller_flush_offline_log();
         }
         was_connected = now_connected;
 
