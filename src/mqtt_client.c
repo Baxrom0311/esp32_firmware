@@ -64,6 +64,16 @@ static void subscribe_topics(void)
     publish_sync_request();
 }
 
+static void fire_alarm_task(void *arg)
+{
+    (void)arg;
+    for (int i = 0; i < 6; i++) {
+        bell_controller_ring(3000);
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+    vTaskDelete(NULL);
+}
+
 static void mqtt_dispatch_command(const char *json_data)
 {
     cJSON *root = cJSON_Parse(json_data);
@@ -119,12 +129,8 @@ static void mqtt_dispatch_command(const char *json_data)
         ESP_LOGI(TAG, "NTP sync command received");
         schedule_manager_sync_time();
     } else if (strcmp(command, "fire_alarm") == 0) {
-        ESP_LOGW(TAG, "FIRE ALARM! Repeating pattern");
-        /* 3s on, 2s off, repeat 6 times = 30s total */
-        for (int i = 0; i < 6; i++) {
-            bell_controller_ring(3000);
-            vTaskDelay(pdMS_TO_TICKS(5000)); /* 3s ring + 2s pause */
-        }
+        ESP_LOGW(TAG, "FIRE ALARM! Starting alarm task");
+        xTaskCreate(fire_alarm_task, "fire_alarm", 3072, NULL, 6, NULL);
     }
 
     /* Send ACK after command execution */
@@ -292,7 +298,6 @@ esp_err_t mqtt_client_init(const char *device_id, const char *username, const ch
 
     esp_mqtt_client_config_t cfg = {
         .broker.address.uri = MQTT_BROKER_URI,
-        .broker.verification.certificate = ca_cert_pem,
         .credentials = {
             .username = username,
             .client_id = client_id,
@@ -311,6 +316,12 @@ esp_err_t mqtt_client_init(const char *device_id, const char *username, const ch
         },
         .network.reconnect_timeout_ms = MQTT_RECONNECT_DELAY_MS,
     };
+
+    /* Only set CA cert for TLS connections (mqtts:// or wss://) */
+    if (strncmp(MQTT_BROKER_URI, "mqtts://", 8) == 0 ||
+        strncmp(MQTT_BROKER_URI, "wss://", 6) == 0) {
+        cfg.broker.verification.certificate = ca_cert_pem;
+    }
 
     if (!s_publish_mutex) {
         s_publish_mutex = xSemaphoreCreateMutex();

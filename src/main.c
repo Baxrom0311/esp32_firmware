@@ -139,10 +139,10 @@ void app_main(void)
     /* Register shutdown handler to turn off bell on panic/restart */
     esp_register_shutdown_handler(shutdown_handler);
 
-    /* 2. Initialize RTC (DS1307) — set system time from hardware clock */
+    /* 2. Apply timezone from NVS (or default) */
     apply_timezone();
 
-    /* 3. Apply timezone from NVS (or default) */
+    /* 3. Initialize RTC (DS1302) — set system time from hardware clock */
     rtc_driver_init();
 
     /* 3. Initialize bell GPIO and load offline bell logs */

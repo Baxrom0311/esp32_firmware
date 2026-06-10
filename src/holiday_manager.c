@@ -90,11 +90,9 @@ esp_err_t holiday_manager_init(void) {
     uint32_t calc_crc = esp_crc32_le(0, (const uint8_t *)s_holidays, dates_len);
     calc_crc = esp_crc32_le(calc_crc, (const uint8_t *)s_ranges, ranges_len);
     if (crc_err != ESP_OK || stored_crc != calc_crc) {
-        ESP_LOGE(TAG, "Holiday CRC mismatch, discarding");
-        s_holiday_count = 0;
-        s_range_count = 0;
-        nvs_close(h);
-        return ESP_OK;
+        ESP_LOGW(TAG, "Holiday CRC mismatch (stored=0x%08lx calc=0x%08lx), keeping as fallback",
+                 (unsigned long)stored_crc, (unsigned long)calc_crc);
+        /* Keep potentially corrupted data as fallback — consistent with schedule behavior */
     }
 
     uint8_t silent_val = 0;

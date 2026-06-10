@@ -9,9 +9,9 @@
 static const char *TAG = "rtc";
 
 /* DS1302 uses 3-wire: CLK (SCLK), DAT (IO), RST (CE) */
-#define CLK_PIN  RTC_I2C_SCL_PIN  /* GPIO 21 */
-#define DAT_PIN  RTC_I2C_SDA_PIN  /* GPIO 22 */
-#define RST_PIN  RTC_RST_PIN      /* GPIO 4 */
+#define CLK_PIN  RTC_CLK_PIN  /* GPIO 21 */
+#define DAT_PIN  RTC_DAT_PIN  /* GPIO 22 */
+#define RST_PIN  RTC_RST_PIN  /* GPIO 4 */
 
 #define DS1302_SEC_REG   0x80
 #define DS1302_MIN_REG   0x82

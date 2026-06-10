@@ -16,14 +16,11 @@
 #define BELL_DEFAULT_DURATION_MS 3000
 #define PANIC_BUTTON_GPIO       GPIO_NUM_0
 #define RELAY2_GPIO_PIN         GPIO_NUM_14
-#define BELL_MAX_DURATION_MS    60000
-/* RTC (DS1307/DS3231) I2C pins */
-#define RTC_I2C_SDA_PIN         GPIO_NUM_22
-#define RTC_I2C_SCL_PIN         GPIO_NUM_21
+#define BELL_MAX_DURATION_MS    30000
+/* RTC DS1302 — 3-wire interface (CLK, DAT, RST) */
+#define RTC_CLK_PIN             GPIO_NUM_21
+#define RTC_DAT_PIN             GPIO_NUM_22
 #define RTC_RST_PIN             GPIO_NUM_4
-#define RTC_I2C_PORT            I2C_NUM_0
-#define RTC_I2C_FREQ_HZ         100000
-#define RTC_I2C_ADDR            0x68
 /* Timings */
 #define HEARTBEAT_INTERVAL_MS   30000
 #define WIFI_RECONNECT_DELAY_MS 5000
@@ -45,8 +42,8 @@
 /* OTA */
 #define OTA_ALLOWED_HOST        "bell.boos.uz"
 #define OTA_ALLOWED_HOST_2      "146.190.210.125"
-/* Firmware version */
-#define FW_VERSION              "1.0.0"
+/* Firmware version — bump on each release */
+#define FW_VERSION              "1.1.0"
 /* Hardware revision — bump when PCB, sensors, or GPIO mapping changes */
 #define HW_VERSION              "1.0"
 /* BLE Provisioning */

@@ -189,7 +189,7 @@ esp_err_t bell_controller_ring_with_source(uint32_t duration_ms, const char *sou
         strlcpy(arg->source, "schedule", sizeof(arg->source));
     }
 
-    BaseType_t ret = xTaskCreate(ring_task, "bell_ring", 8192,
+    BaseType_t ret = xTaskCreate(ring_task, "bell_ring", 4096,
                                  arg, 5, NULL);
     if (ret != pdPASS) {
         free(arg);

@@ -6,8 +6,11 @@
 #define DEFAULT_WIFI_SSID       "YOUR_WIFI_SSID"
 #define DEFAULT_WIFI_PASS       "YOUR_WIFI_PASSWORD"
 
-/* MQTT Broker */
-#define MQTT_BROKER_URI         "mqtt://YOUR_SERVER_IP:1883"
+/* MQTT Broker
+ * Production: prefer TLS (mqtts://, port 8883). Update CA bundle in include/ca_cert.h.
+ * Development: plain mqtt:// to a private IP is acceptable but not recommended for prod.
+ */
+#define MQTT_BROKER_URI         "mqtts://bell.boos.uz:8883"
 #define MQTT_KEEPALIVE_SEC      30
 
 /* API Server */
@@ -23,13 +26,10 @@
 #define PANIC_BUTTON_GPIO       GPIO_NUM_0
 #define RELAY2_GPIO_PIN         GPIO_NUM_14
 
-/* RTC (DS1307/DS3231) I2C */
-#define RTC_I2C_SDA_PIN         GPIO_NUM_22
-#define RTC_I2C_SCL_PIN         GPIO_NUM_21
+/* RTC DS1302 — 3-wire interface (CLK, DAT, RST) */
+#define RTC_CLK_PIN             GPIO_NUM_21
+#define RTC_DAT_PIN             GPIO_NUM_22
 #define RTC_RST_PIN             GPIO_NUM_4
-#define RTC_I2C_PORT            I2C_NUM_0
-#define RTC_I2C_FREQ_HZ         100000
-#define RTC_I2C_ADDR            0x68
 
 /* Timings */
 #define HEARTBEAT_INTERVAL_MS   30000
@@ -56,11 +56,11 @@
 #define OTA_ALLOWED_HOST_2      "YOUR_SERVER_IP"
 
 /* Firmware Version */
-#define FW_VERSION              "1.0.0"
+#define FW_VERSION              "1.1.0"
 /* Hardware revision — bump when PCB, sensors, or GPIO mapping changes */
 #define HW_VERSION              "1.0"
 
-/* BLE Provisioning */
-#define BLE_PASSKEY             123456
+/* BLE Provisioning (disabled — enable CONFIG_BT_ENABLED in sdkconfig to use) */
+/* #define BLE_PASSKEY             123456 */
 
 #endif

@@ -62,8 +62,16 @@ static esp_err_t validate_image_header(const esp_app_desc_t *incoming)
         return ESP_OK;
     }
 
-    /* Reject same or older version (prevent re-flash and downgrade attacks) */
-    int cmp = strncmp(incoming->version, running_desc.version, sizeof(running_desc.version));
+    /* Semantic version comparison */
+    int inc[3] = {0}, run[3] = {0};
+    sscanf(incoming->version, "%d.%d.%d", &inc[0], &inc[1], &inc[2]);
+    sscanf(running_desc.version, "%d.%d.%d", &run[0], &run[1], &run[2]);
+
+    int cmp = 0;
+    for (int i = 0; i < 3 && cmp == 0; i++) {
+        cmp = inc[i] - run[i];
+    }
+
     if (cmp == 0) {
         ESP_LOGW(TAG, "OTA image version same as running (%s), skipping", running_desc.version);
         return ESP_ERR_INVALID_VERSION;

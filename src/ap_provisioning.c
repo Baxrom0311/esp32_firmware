@@ -93,7 +93,12 @@ static esp_err_t handler_scan(httpd_req_t *req)
 {
     wifi_ap_record_t ap_info[10];
     uint16_t ap_count = 10;
-    wifi_scan_config_t scan_cfg = {.show_hidden = false, .scan_type = WIFI_SCAN_TYPE_ACTIVE};
+    wifi_scan_config_t scan_cfg = {
+        .show_hidden = false,
+        .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time.active.min = 100,
+        .scan_time.active.max = 300,  /* Shorter scan to reduce STA interference in APSTA mode */
+    };
     esp_err_t err = esp_wifi_scan_start(&scan_cfg, true);
     if (err != ESP_OK) {
         httpd_resp_set_type(req, "application/json");
