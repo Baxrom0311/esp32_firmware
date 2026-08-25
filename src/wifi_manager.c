@@ -18,6 +18,14 @@
 
 static const char *TAG = "wifi_mgr";
 
+/* Deferred fallback task — calls AP+STA from a safe task context, not from WiFi event handler */
+static void fallback_deferred_task(void *arg)
+{
+    wifi_ap_fallback_cb_t cb = (wifi_ap_fallback_cb_t)arg;
+    if (cb) cb();
+    vTaskDelete(NULL);
+}
+
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
 #define AP_FALLBACK_RETRIES 3
@@ -64,12 +72,15 @@ static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *da
         s_retry_num++;
 
         if (s_fallback_mode && s_retry_num >= AP_FALLBACK_RETRIES) {
-            /* Trigger AP fallback after AP_FALLBACK_RETRIES failed attempts */
+            /* Trigger AP fallback after AP_FALLBACK_RETRIES failed attempts.
+             * IMPORTANT: do NOT call esp_wifi_stop/start directly from this event handler —
+             * that causes a deadlock inside the WiFi task. Defer to a separate task. */
             xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
             ESP_LOGW(TAG, "WiFi failed %d times, triggering AP fallback", s_retry_num);
             s_fallback_mode = false; /* prevent re-trigger */
             if (s_fallback_cb) {
-                s_fallback_cb();
+                xTaskCreate(fallback_deferred_task, "wifi_fallback",
+                            4096, (void *)s_fallback_cb, 5, NULL);
             }
             return;
         }
@@ -105,10 +116,22 @@ static esp_err_t wifi_start_sta(void)
     char ssid[33] = {0};
     char pass[65] = {0};
 
-    if (nvs_storage_get_str(NVS_NAMESPACE_WIFI, "ssid", ssid, sizeof(ssid)) != ESP_OK
-        || strlen(ssid) == 0) {
+    bool has_credentials = (nvs_storage_get_str(NVS_NAMESPACE_WIFI, "ssid", ssid, sizeof(ssid)) == ESP_OK
+                            && strlen(ssid) > 0);
+
+    if (!has_credentials) {
+        /* No SSID configured — try default; if also empty, trigger fallback immediately */
         strncpy(ssid, DEFAULT_WIFI_SSID, sizeof(ssid) - 1);
         strncpy(pass, DEFAULT_WIFI_PASS, sizeof(pass) - 1);
+        if (strlen(ssid) == 0) {
+            ESP_LOGW(TAG, "No WiFi credentials — skipping STA, triggering AP fallback");
+            /* Signal WIFI_FAIL_BIT so the wait in init_with_fallback returns */
+            xEventGroupSetBits(s_wifi_event_group, WIFI_FAIL_BIT);
+            if (s_fallback_cb) {
+                s_fallback_cb();
+            }
+            return ESP_FAIL;
+        }
         ESP_LOGW(TAG, "Using default WiFi credentials");
     } else {
         nvs_storage_get_str(NVS_NAMESPACE_WIFI, "pass", pass, sizeof(pass));

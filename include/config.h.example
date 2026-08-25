@@ -18,6 +18,14 @@
 #define API_REGISTER_PATH       "/api/v1/device/auto-register/"
 #define API_ACTIVATE_PATH       "/api/v1/device/activate/"
 #define API_CREDENTIALS_PATH    "/api/v1/device/credentials/"
+#define API_ENTITLEMENT_PATH    "/api/v1/device/entitlement/"
+
+/* Subscription entitlement.
+ * Must match backend ENTITLEMENT_SIGNING_SECRET. For stronger production
+ * protection, replace shared HMAC with public-key signature verification.
+ */
+#define ENTITLEMENT_HMAC_SECRET "CHANGE_ME_ENTITLEMENT_SECRET"
+#define ENTITLEMENT_REQUIRED    1
 
 /* Hardware Pins */
 #define BELL_GPIO_PIN           GPIO_NUM_13
@@ -50,6 +58,7 @@
 #define NVS_NAMESPACE_SCHEDULE  "schedule"
 #define NVS_NAMESPACE_CONFIG    "config"
 #define NVS_NAMESPACE_HOLIDAYS  "holidays"
+#define NVS_NAMESPACE_ENTITLEMENT "entitlement"
 
 /* OTA Allowed Hosts */
 #define OTA_ALLOWED_HOST        "YOUR_SERVER_DOMAIN"

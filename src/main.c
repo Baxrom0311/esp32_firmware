@@ -10,6 +10,7 @@
 #include "device_registration.h"
 #include "status_reporter.h"
 #include "rtc_driver.h"
+#include "entitlement_manager.h"
 
 #include "esp_log.h"
 #include "esp_sntp.h"
@@ -56,7 +57,8 @@ static bool sntp_sync_once(void)
 {
     s_sntp_synced = false;
     int retry = 0;
-    while (!s_sntp_synced && retry < 40) { /* max 20s */
+    while (!s_sntp_synced && retry < 20) { /* max 10s — was 40×500ms=20s, too close to WDT */
+        esp_task_wdt_reset(); /* reset WDT while waiting for SNTP */
         vTaskDelay(pdMS_TO_TICKS(500));
         retry++;
     }
@@ -124,14 +126,19 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "School Device Firmware v%s starting...", FW_VERSION);
 
-    /* 0. Initialize watchdog timer */
+    /* 0. Initialize watchdog timer (monitoring starts in main loop, not here — WiFi
+     *    init can legitimately block for 30+ seconds doing AP fallback) */
     esp_task_wdt_config_t wdt_cfg = {
         .timeout_ms = WDT_TIMEOUT_SEC * 1000,
         .idle_core_mask = 0,
         .trigger_panic = true,
     };
-    esp_task_wdt_init(&wdt_cfg);
-    esp_task_wdt_add(NULL);
+    /* ESP-IDF 5.x may already have WDT initialized — reconfigure instead of re-init */
+    esp_err_t wdt_err = esp_task_wdt_reconfigure(&wdt_cfg);
+    if (wdt_err == ESP_ERR_INVALID_STATE) {
+        esp_task_wdt_init(&wdt_cfg); /* fallback for older IDF versions */
+    }
+    /* NOTE: esp_task_wdt_add(NULL) is called just before the main loop */
 
     /* 1. Initialize NVS */
     ESP_ERROR_CHECK(nvs_storage_init());
@@ -155,9 +162,14 @@ void app_main(void)
         ESP_LOGW(TAG, "WiFi failed, running offline with cached schedule");
     }
 
+    /* Start WDT monitoring NOW — WiFi init (the long blocker) is complete.
+     * All subsequent calls (SNTP, registration, MQTT) use esp_task_wdt_reset() safely. */
+    esp_task_wdt_add(NULL);
+
     /* 5. Load schedule and holidays from NVS (works offline) */
     schedule_manager_init();
     holiday_manager_init();
+    entitlement_manager_init();
     rtc_diagnostics_init();
 
     /* 6. If online: sync time, register device, connect MQTT */
@@ -178,6 +190,7 @@ void app_main(void)
 
         if (device_registration_is_registered()) {
             const char *dev_id = device_registration_get_id();
+            entitlement_manager_fetch(dev_id);
             mqtt_client_init(dev_id,
                              device_registration_get_mqtt_user(),
                              device_registration_get_mqtt_pass());
@@ -211,11 +224,22 @@ void app_main(void)
         if (now_connected && !was_connected) {
             ESP_LOGI(TAG, "WiFi restored");
             if (sntp_last_sync == 0) {
+                /* sntp_sync_once() can block up to 10s — reset WDT first */
+                esp_task_wdt_reset();
                 init_sntp();
                 sntp_last_sync = xTaskGetTickCount();
             }
+            /* Register if not yet registered (e.g. first boot via AP provisioning).
+             * register_with_retry blocks up to 5+15+45=65s — must reset WDT before each attempt. */
+            if (!device_registration_is_registered()) {
+                ESP_LOGI(TAG, "WiFi restored — attempting device registration...");
+                esp_task_wdt_reset();
+                device_registration_register_with_retry();
+            }
             if (device_registration_is_registered() && !mqtt_client_is_connected()) {
                 const char *dev_id = device_registration_get_id();
+                esp_task_wdt_reset(); /* entitlement_fetch does HTTP — reset WDT */
+                entitlement_manager_fetch(dev_id);
                 mqtt_client_init(dev_id,
                                  device_registration_get_mqtt_user(),
                                  device_registration_get_mqtt_pass());

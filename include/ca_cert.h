@@ -25,14 +25,14 @@ static const char ca_cert_pem[] =
 "hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL\n"
 "ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ\n"
 "3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK\n"
-"NFtY2PwByVS5uCbMiogZiUvsNOLXBIy2nEhSfhmehPk0dZwO0tVT2hKBBQ7Gw6Ht\n"
-"w/srfafcDtpP7aDEzQRcWj6HR7enGnFrRs6FqY9iiNBjTFYCI4EvzAvFLg8MUDPK\n"
-"DP1dygIh8JB1drJoV+XtOkQvRD1xNIwvalP/kzkkAPwBLYAu0E0LI2wA0u9NH/fP\n"
-"OC3hBbVGKnXCjRKSeizoS2ePWKnqdpSLo9TpOSYkHFMedskm7bUYV2YNZP6elz4q\n"
-"1cDQ/5nR1ZjXMTE3jjCMPL8UA0lx9r6fn9t6cyp7u/YTw+xBD8AyOqwXG8lazw6B\n"
-"8aDBpZ7mIQ2OCYv8Tf2FkEEy9MY/sAFp0sR5R2bO49cR3SXiAKP3fXDCYLuFEJhm\n"
-"kXXI0gHuar8I/s61r2t79JXelXqi5cfe1sn1mAGNn/1BIcHK2lz1RSZ4Y3rOLGiC\n"
-"3EG2dorBaY7GZYf1ciVQ9ckqB+dRQENVBMQW9aTbvI2bkfi0JvKZm1597Ys=\n"
+"NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5\n"
+"ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur\n"
+"TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC\n"
+"jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc\n"
+"oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq\n"
+"4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA\n"
+"mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d\n"
+"emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=\n"
 "-----END CERTIFICATE-----\n";
 
 #endif /* CA_CERT_H */

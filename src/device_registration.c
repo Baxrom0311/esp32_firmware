@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_http_client.h"
+#include "esp_task_wdt.h"
 #include "cJSON.h"
 
 #include <string.h>
@@ -160,11 +161,14 @@ const char *device_registration_get_mqtt_pass(void) { return s_mqtt_pass; }
 
 esp_err_t device_registration_register_with_retry(void)
 {
-    /* Exponential backoff: 5s, 15s, 45s */
+    /* Exponential backoff: 5s, 15s, 45s.
+     * Total blocking time up to 65s — callers MUST reset WDT before calling
+     * (WDT_TIMEOUT=30s). We also reset WDT inside each delay to be safe. */
     const uint32_t delays_ms[] = {5000, 15000, 45000};
     const int max_attempts = 3;
 
     for (int attempt = 0; attempt < max_attempts; attempt++) {
+        esp_task_wdt_reset();
         esp_err_t err = device_registration_register();
         if (err == ESP_OK) {
             return ESP_OK;
@@ -172,6 +176,8 @@ esp_err_t device_registration_register_with_retry(void)
         if (attempt < max_attempts - 1) {
             ESP_LOGW(TAG, "Registration attempt %d failed, retrying in %lums",
                      attempt + 1, (unsigned long)delays_ms[attempt]);
+            /* Reset WDT before long delay (45s > 30s WDT timeout) */
+            esp_task_wdt_reset();
             vTaskDelay(pdMS_TO_TICKS(delays_ms[attempt]));
         }
     }

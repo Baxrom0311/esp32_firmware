@@ -10,6 +10,7 @@
 #include "holiday_manager.h"
 #include "ota_manager.h"
 #include "schedule_manager.h"
+#include "entitlement_manager.h"
 #include "cJSON.h"
 
 #include "freertos/FreeRTOS.h"
@@ -64,13 +65,16 @@ static void subscribe_topics(void)
     publish_sync_request();
 }
 
+static _Atomic bool s_fire_alarm_active = false;
+
 static void fire_alarm_task(void *arg)
 {
     (void)arg;
     for (int i = 0; i < 6; i++) {
-        bell_controller_ring(3000);
+        bell_controller_ring_with_source(3000, "fire_alarm");
         vTaskDelay(pdMS_TO_TICKS(5000));
     }
+    s_fire_alarm_active = false;
     vTaskDelete(NULL);
 }
 
@@ -99,7 +103,7 @@ static void mqtt_dispatch_command(const char *json_data)
                 duration_ms = (uint32_t)val * 1000;
             }
         }
-        bell_controller_ring(duration_ms);
+        bell_controller_ring_with_source(duration_ms, "manual");
     } else if (strcmp(command, "ota") == 0) {
         cJSON *url = cJSON_GetObjectItem(root, "url");
         if (url && cJSON_IsString(url)) {
@@ -129,8 +133,13 @@ static void mqtt_dispatch_command(const char *json_data)
         ESP_LOGI(TAG, "NTP sync command received");
         schedule_manager_sync_time();
     } else if (strcmp(command, "fire_alarm") == 0) {
-        ESP_LOGW(TAG, "FIRE ALARM! Starting alarm task");
-        xTaskCreate(fire_alarm_task, "fire_alarm", 3072, NULL, 6, NULL);
+        if (!s_fire_alarm_active) {
+            s_fire_alarm_active = true;
+            ESP_LOGW(TAG, "FIRE ALARM! Starting alarm task");
+            xTaskCreate(fire_alarm_task, "fire_alarm", 3072, NULL, 6, NULL);
+        } else {
+            ESP_LOGW(TAG, "Fire alarm already active, ignoring duplicate command");
+        }
     }
 
     /* Send ACK after command execution */
@@ -188,9 +197,18 @@ static void mqtt_event_handler(void *arg, esp_event_base_t base, int32_t event_i
         s_connected = true;
         /* Publish online status as retained — dashboard always sees current state */
         {
-            char online_payload[64];
-            snprintf(online_payload, sizeof(online_payload),
-                     "{\"status\":\"online\",\"fw\":\"%s\"}", FW_VERSION);
+        char online_payload[320];
+        snprintf(online_payload, sizeof(online_payload),
+                     "{\"status\":\"online\",\"fw\":\"%s\",\"entitlement_version\":%lu,"
+                     "\"entitlement_state\":\"%s\",\"entitlement_valid_until\":%ld,"
+                     "\"entitlement_grace_until\":%ld,\"entitlement_last_sync\":%ld,"
+                     "\"entitlement_error\":\"%s\"}",
+                     FW_VERSION, (unsigned long)entitlement_manager_get_version(),
+                     entitlement_manager_get_state_string(),
+                     (long)entitlement_manager_get_valid_until(),
+                     (long)entitlement_manager_get_grace_until(),
+                     (long)entitlement_manager_get_last_sync_at(),
+                     entitlement_manager_get_last_error());
             esp_mqtt_client_publish(s_client, s_topic_status, online_payload, 0, 1, 1);
         }
         subscribe_topics();
@@ -273,8 +291,9 @@ static void publish_sync_request(void)
     char topic[96], payload[256];
     snprintf(topic, sizeof(topic), "devices/%s/sync", s_device_id);
     snprintf(payload, sizeof(payload),
-             "{\"schedule_version\":%lu,\"fw\":\"%s\",\"hw\":\"%s\",\"stale\":%s}",
+             "{\"schedule_version\":%lu,\"entitlement_version\":%lu,\"fw\":\"%s\",\"hw\":\"%s\",\"stale\":%s}",
              (unsigned long)schedule_manager_get_version(),
+             (unsigned long)entitlement_manager_get_version(),
              FW_VERSION, HW_VERSION,
              schedule_manager_is_stale() ? "true" : "false");
     esp_mqtt_client_publish(s_client, topic, payload, 0, 1, 0);
@@ -378,10 +397,19 @@ esp_err_t mqtt_client_send_heartbeat(const char *device_id, int8_t rssi, uint32_
     snprintf(topic, sizeof(topic), "devices/%s/status", device_id);
 
     uint32_t free_heap = esp_get_free_heap_size();
-    char payload[224];
+    char payload[448];
     snprintf(payload, sizeof(payload),
-             "{\"status\":\"online\",\"rssi\":%d,\"uptime\":%lu,\"fw\":\"%s\",\"hw\":\"%s\",\"heap\":%lu}",
-             rssi, (unsigned long)uptime_sec, FW_VERSION, HW_VERSION, (unsigned long)free_heap);
+             "{\"status\":\"online\",\"rssi\":%d,\"uptime\":%lu,\"fw\":\"%s\",\"hw\":\"%s\","
+             "\"heap\":%lu,\"entitlement_version\":%lu,\"entitlement_state\":\"%s\","
+             "\"entitlement_valid_until\":%ld,\"entitlement_grace_until\":%ld,"
+             "\"entitlement_last_sync\":%ld,\"entitlement_error\":\"%s\"}",
+             rssi, (unsigned long)uptime_sec, FW_VERSION, HW_VERSION,
+             (unsigned long)free_heap, (unsigned long)entitlement_manager_get_version(),
+             entitlement_manager_get_state_string(),
+             (long)entitlement_manager_get_valid_until(),
+             (long)entitlement_manager_get_grace_until(),
+             (long)entitlement_manager_get_last_sync_at(),
+             entitlement_manager_get_last_error());
 
     return mqtt_client_publish(topic, payload, 0);
 }

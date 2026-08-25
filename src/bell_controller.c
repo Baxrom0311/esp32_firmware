@@ -1,6 +1,7 @@
 #include "bell_controller.h"
 #include "config.h"
 #include "nvs_storage.h"
+#include "entitlement_manager.h"
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
@@ -20,6 +21,7 @@ static SemaphoreHandle_t s_ring_mutex = NULL;
 typedef struct __attribute__((packed)) {
     time_t timestamp;
     uint32_t duration_ms;
+    char source[12]; /* "schedule", "manual", "emergency", "fire_alarm" */
 } offline_bell_log_t;
 
 static offline_bell_log_t s_offline_log[OFFLINE_LOG_MAX];
@@ -30,7 +32,7 @@ typedef struct {
     char source[16];
 } ring_task_arg_t;
 
-static void offline_log_save(time_t ts, uint32_t duration_ms)
+static void offline_log_save(time_t ts, uint32_t duration_ms, const char *source)
 {
     if (s_offline_log_count >= OFFLINE_LOG_MAX) {
         /* Shift out oldest entry */
@@ -40,6 +42,9 @@ static void offline_log_save(time_t ts, uint32_t duration_ms)
     }
     s_offline_log[s_offline_log_count].timestamp = ts;
     s_offline_log[s_offline_log_count].duration_ms = duration_ms;
+    strlcpy(s_offline_log[s_offline_log_count].source,
+            source ? source : "schedule",
+            sizeof(s_offline_log[s_offline_log_count].source));
     s_offline_log_count++;
     /* Persist to NVS */
     nvs_storage_set_blob(NVS_NAMESPACE_CONFIG, "blog", s_offline_log,
@@ -83,12 +88,13 @@ void bell_controller_flush_offline_log(void)
         struct tm t;
         time_t ts = s_offline_log[i].timestamp;
         localtime_r(&ts, &t);
-        char payload[160];
+        const char *src = s_offline_log[i].source[0] ? s_offline_log[i].source : "offline";
+        char payload[176];
         snprintf(payload, sizeof(payload),
-                 "{\"time\":\"%04d-%02d-%02dT%02d:%02d:%02d\",\"duration\":%lu,\"source\":\"offline\"}",
+                 "{\"time\":\"%04d-%02d-%02dT%02d:%02d:%02d\",\"duration\":%lu,\"source\":\"%s\",\"offline\":true}",
                  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
                  t.tm_hour, t.tm_min, t.tm_sec,
-                 (unsigned long)s_offline_log[i].duration_ms);
+                 (unsigned long)s_offline_log[i].duration_ms, src);
         mqtt_client_publish(topic, payload, 1);
     }
     ESP_LOGI(TAG, "Flushed %d offline bell logs", s_offline_log_count);
@@ -148,8 +154,8 @@ static void ring_task(void *arg)
             t.tm_hour, t.tm_min, t.tm_sec, (unsigned long)duration_ms, source);
         mqtt_client_publish(topic, payload, 1);
     } else {
-        /* Offline — save to NVS for later upload */
-        offline_log_save(now, duration_ms);
+        /* Offline — save to NVS for later upload (with original source) */
+        offline_log_save(now, duration_ms, source);
         ESP_LOGI(TAG, "Bell log saved offline (%d queued)", s_offline_log_count);
     }
 
@@ -164,6 +170,10 @@ esp_err_t bell_controller_ring(uint32_t duration_ms)
 
 esp_err_t bell_controller_ring_with_source(uint32_t duration_ms, const char *source)
 {
+    const char *ring_source = (source && source[0]) ? source : "schedule";
+    if (!entitlement_manager_can_ring(ring_source)) {
+        return ESP_ERR_INVALID_STATE;
+    }
     if (duration_ms == 0) {
         duration_ms = BELL_DEFAULT_DURATION_MS;
     }
@@ -183,11 +193,7 @@ esp_err_t bell_controller_ring_with_source(uint32_t duration_ms, const char *sou
         return ESP_ERR_NO_MEM;
     }
     arg->duration_ms = duration_ms;
-    if (source && source[0]) {
-        strlcpy(arg->source, source, sizeof(arg->source));
-    } else {
-        strlcpy(arg->source, "schedule", sizeof(arg->source));
-    }
+    strlcpy(arg->source, ring_source, sizeof(arg->source));
 
     BaseType_t ret = xTaskCreate(ring_task, "bell_ring", 4096,
                                  arg, 5, NULL);
